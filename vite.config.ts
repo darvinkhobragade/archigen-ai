@@ -9,11 +9,18 @@ export default defineConfig({
   plugins: [
     tsconfigPaths(),
     tailwindcss(),
-    tanstackStart({
-      server: { entry: "server" },
-    }),
+    tanstackStart(),
     nitro(),
     react(),
   ],
+  ssr: {
+    noExternal: [
+      "@tanstack/react-start",
+      "@tanstack/start-server-core",
+      "@tanstack/start-client-core",
+      "@tanstack/start-plugin-core",
+      "@tanstack/react-router",
+    ],
+  },
 });
 
