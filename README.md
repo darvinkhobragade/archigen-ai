@@ -192,23 +192,20 @@ For detailed deployment instructions and Supabase auth configuration, refer to t
 | `AI_IMAGE_MODEL` | Server | Optional | Default image generation model (`imagen-3.0-generate-002`) |
 | `AI_TEXT_MODEL` | Server | Optional | Default text/chat model (`gemini-2.5-flash`) |
 
----
+## 🔒 Access & Maintainer Policy
 
-## 🤝 Contributing
+This repository is strictly maintained and authored by **[Darvin Khobragade](https://github.com/darvinkhobragade)**. 
 
-Contributions, issues, and feature requests are welcome!
-
-1. Fork the project repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+- **Direct Commits & Push Access**: Restricted exclusively to the repository owner.
+- **External Pull Requests / Contributions**: Not accepted.
+- **Unauthorized Distribution**: Proprietary architecture, intellectual property, and design assets are reserved by the author.
 
 ---
 
-## 📄 License
+## 📄 License & Rights
 
-This project is licensed under the [MIT License](LICENSE).
+Copyright © 2026 [Darvin Khobragade](https://github.com/darvinkhobragade). All Rights Reserved.  
+Unauthorized copying, modification, distribution, or commercial exploitation of this repository and its source code is strictly prohibited without explicit written permission from the author.
 
 ---
 
