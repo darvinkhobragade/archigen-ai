@@ -13,8 +13,7 @@
 
 **An AI-powered architecture & interior design studio. Generate photorealistic architectural structures, interior concepts, perform room restyling, design interactive 2D/3D floor plans, and consult an intelligent architectural AI assistant.**
 
-[🚀 Explore Live App](https://archigen-ai-jet.vercel.app/) • [📖 Deployment Guide](DEPLOYMENT.md) • [✨ Key Features](#-features) • [🛠️ Getting Started](#-getting-started)
-
+[🚀 Explore Live App](https://archigen-ai-jet.vercel.app/) • [📖 Deployment Guide](DEPLOYMENT.md) • [✨ Key Features](#-features) 
 </div>
 
 ---
