@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile, initials } from "@/hooks/use-profile";
+import { useAppSettings } from "@/hooks/use-app-settings";
 import { ThemeToggle } from "@/components/archigen/theme-toggle";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -98,7 +99,9 @@ function AppLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: profile } = useProfile();
+  const { settings } = useAppSettings();
   const credits = profile?.credits ?? 0;
+  const showLowCreditWarning = settings.lowCreditAlerts && credits < 20;
 
   async function handleSignOut() {
     await queryClient.cancelQueries();
@@ -117,13 +120,13 @@ function AppLayout() {
         <div className="surface-panel bg-secondary/40 p-4">
           <p className="label-caps">Credits</p>
           <p
-            className={`mt-1 font-display text-2xl font-bold ${credits < 6 ? "text-destructive" : "text-primary"}`}
+            className={`mt-1 font-display text-2xl font-bold ${showLowCreditWarning ? "text-destructive" : "text-primary"}`}
           >
             {credits}
           </p>
-          {credits < 6 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Running low — top up to keep generating.
+          {showLowCreditWarning && (
+            <p className="mt-1 text-xs text-destructive font-medium">
+              Running low (&lt;20 credits) — top up to keep generating.
             </p>
           )}
           <Button asChild size="sm" variant="outline" className="mt-3 w-full">
@@ -156,7 +159,7 @@ function AppLayout() {
             <Badge
               variant="outline"
               className={
-                credits < 6
+                showLowCreditWarning
                   ? "border-destructive/50 text-destructive"
                   : "border-primary/40 text-primary"
               }

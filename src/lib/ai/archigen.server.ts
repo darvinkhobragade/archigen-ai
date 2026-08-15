@@ -61,6 +61,7 @@ interface OpenRouterChatResponse {
 function createFallbackSvgBytes(
   prompt: string,
   tool: string = "architecture",
+  watermark: boolean = true,
 ): { bytes: Uint8Array; contentType: string; seed: number } {
   const title = prompt.slice(0, 60) + (prompt.length > 60 ? "…" : "");
   const isInterior = tool === "interior";
@@ -129,10 +130,16 @@ function createFallbackSvgBytes(
     `
     }
 
+    ${
+      watermark
+        ? `
     <!-- Watermark / HUD Badge -->
     <rect x="40" y="40" width="380" height="64" rx="8" fill="#0f172a" opacity="0.85" stroke="#334155" stroke-width="1.5"/>
     <text x="60" y="70" fill="#f8fafc" font-family="sans-serif" font-size="18" font-weight="600">ArchiGen AI Concept Render</text>
     <text x="60" y="92" fill="${accentColor}" font-family="sans-serif" font-size="12" font-weight="500">${tool.toUpperCase()} MODE</text>
+    `
+        : ""
+    }
 
     <!-- Prompt Caption Footer -->
     <rect x="40" y="810" width="1120" height="50" rx="8" fill="#0f172a" opacity="0.9" stroke="#334155" stroke-width="1"/>
@@ -152,19 +159,26 @@ async function fetchPhotorealisticFluxImage(
   prompt: string,
   aspectRatio: string = "1:1",
   seed?: number,
+  isHires: boolean = false,
 ): Promise<{ bytes: Uint8Array; contentType: string; seed: number }> {
   const chosenSeed =
     seed !== undefined && !isNaN(seed) ? seed : Math.floor(Math.random() * 1000000);
   const ratioConfig = ASPECT_RATIOS[aspectRatio] ??
     ASPECT_RATIOS["1:1"] ?? { width: 1440, height: 1440 };
-  const width = ratioConfig.width;
-  const height = ratioConfig.height;
 
-  const encodedPrompt = encodeURIComponent(prompt);
+  // Scale resolution for high-resolution 8K output
+  const width = isHires ? Math.min(2048, Math.round(ratioConfig.width * 1.35)) : ratioConfig.width;
+  const height = isHires ? Math.min(2048, Math.round(ratioConfig.height * 1.35)) : ratioConfig.height;
+
+  const finalPrompt = isHires
+    ? `${prompt}, ultra-high resolution masterwork, 8k uhd photorealism, authentic material textures, raw uncompressed render`
+    : prompt;
+
+  const encodedPrompt = encodeURIComponent(finalPrompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true&seed=${chosenSeed}&model=flux&enhance=true`;
 
   console.info(
-    `[ArchiGen AI] Calling Flux rendering engine (${width}x${height}, seed ${chosenSeed}): ${imageUrl}`,
+    `[ArchiGen AI] Calling Flux rendering engine (${width}x${height}, hires: ${isHires}, seed ${chosenSeed}): ${imageUrl}`,
   );
 
   const res = await fetch(imageUrl, {
@@ -294,6 +308,8 @@ export async function generateImageBytes(
   tool: string = "architecture",
   aspectRatio: string = "1:1",
   seed?: number,
+  isHires: boolean = false,
+  watermark: boolean = true,
 ): Promise<{ bytes: Uint8Array; contentType: string; seed: number }> {
   const geminiKey = getGeminiKey();
   let finalPrompt = prompt;
@@ -350,13 +366,13 @@ export async function generateImageBytes(
 
   // 4. Photorealistic Flux Engine (High Resolution & High Fidelity)
   try {
-    return await fetchPhotorealisticFluxImage(finalPrompt, aspectRatio, seed);
+    return await fetchPhotorealisticFluxImage(finalPrompt, aspectRatio, seed, isHires);
   } catch (fluxErr) {
     console.warn("[ArchiGen AI] Flux generator failed, using vector concept fallback:", fluxErr);
   }
 
   // 5. Safe Vector Blueprint Fallback
-  return createFallbackSvgBytes(prompt, tool);
+  return createFallbackSvgBytes(prompt, tool, watermark);
 }
 
 /** Local high-end architectural prompt enhancer that expands briefs with material, lighting, and spatial realism */

@@ -32,11 +32,13 @@ export const generateDesign = createServerFn({ method: "POST" })
     const { buildImagePrompt } = await import("@/lib/ai/prompts");
     const { generateImageBytes } = await import("@/lib/ai/archigen.server");
     const TOOL_COST = { architecture: 4, interior: 3, redesign: 3 } as const;
-    const cost = TOOL_COST[data.tool] ?? 4;
+    const baseCost = TOOL_COST[data.tool] ?? 4;
+    const isHires = String(data.settings?.["hires"] ?? "") === "true";
+    const cost = data.cost || (isHires ? baseCost + 1 : baseCost);
 
     const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
       _cost: cost,
-      _reason: `${data.tool} generation`,
+      _reason: `${data.tool} generation${isHires ? " (HD)" : ""}`,
     });
     if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
 
@@ -56,12 +58,16 @@ export const generateDesign = createServerFn({ method: "POST" })
         data.cameraAngle,
       );
 
+      const isWatermark = String(data.settings?.["watermark"] ?? "true") !== "false";
+
       result = await generateImageBytes(
         prompt,
         data.sourceImage ?? undefined,
         data.tool,
         data.aspectRatio ?? "1:1",
         data.seed,
+        isHires,
+        isWatermark,
       );
     } catch (err) {
       await refund();

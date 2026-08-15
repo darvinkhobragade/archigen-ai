@@ -16,6 +16,7 @@ import {
   Maximize2,
   CheckCircle2,
   Layers,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,11 +34,21 @@ import {
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/archigen/generator";
+import { PresentationSheet } from "@/components/archigen/presentation-sheet";
 import { CONCEPTUAL_NOTE } from "@/lib/archigen-data";
 import { useGenerateFloorPlan, useRender3DFloorPlan } from "@/hooks/use-generate";
 import { useProfile } from "@/hooks/use-profile";
 import { useDeleteFloorPlan, useFloorPlans, useSaveFloorPlan } from "@/hooks/use-floor-plans";
 import type { PlanRoom } from "@/lib/archigen.functions";
+
+export const MATERIAL_PALETTES = [
+  { id: "travertine_oak", label: "Travertine & Light Oak", desc: "Honed Italian travertine stone, natural white oak wood, ambient cove lighting" },
+  { id: "microcement_walnut", label: "Microcement & Walnut", desc: "Seamless grey microcement, rich American walnut millwork, brushed bronze joinery" },
+  { id: "shou_sugi_ban", label: "Shou Sugi Ban & Slate", desc: "Charred timber accents, black slate stone tiles, minimalist matte black hardware" },
+  { id: "terracotta_brick", label: "Exposed Terracotta & Brass", desc: "Handmade terracotta tiles, exposed brick feature walls, brushed brass fixtures" },
+  { id: "scandinavian_birch", label: "Nordic Birch & White Marble", desc: "Pale birch wood flooring, Carrara marble island counters, crisp natural daylight" },
+  { id: "corten_concrete", label: "Board-Formed Concrete & Corten", desc: "Architectural concrete walls, Corten steel framing, industrial loft glass" },
+] as const;
 
 export const Route = createFileRoute("/_authenticated/floor-plan")({
   head: () => ({
@@ -216,7 +227,9 @@ function FloorPlanPage() {
   const [bhk, setBhk] = useState(2);
   const [plot, setPlot] = useState("30 x 40 ft");
   const [style3D, setStyle3D] = useState("photorealistic");
+  const [materialPalette, setMaterialPalette] = useState("travertine_oak");
   const [render3DOpen, setRender3DOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [render3DResult, setRender3DResult] = useState<string | null>(null);
 
   // Dragging state
@@ -351,11 +364,16 @@ function FloorPlanPage() {
     setRender3DOpen(true);
     setRender3DResult(null);
 
+    const selectedPalette = MATERIAL_PALETTES.find((p) => p.id === materialPalette);
+    const combinedStyle = selectedPalette
+      ? `${style3D}, featuring ${selectedPalette.label} (${selectedPalette.desc})`
+      : style3D;
+
     const res = await render3D.mutateAsync({
       rooms,
       bhk,
       plot,
-      stylePreset: style3D,
+      stylePreset: combinedStyle,
     });
     if (res?.url) {
       setRender3DResult(res.url);
@@ -1147,27 +1165,46 @@ function FloorPlanPage() {
           </DialogDescription>
 
           <div className="space-y-4 pt-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">Render Style:</Label>
-                <Select value={style3D} onValueChange={setStyle3D}>
-                  <SelectTrigger className="h-8 text-xs w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="photorealistic">Photorealistic Luxury</SelectItem>
-                    <SelectItem value="japandi">Japandi Warm Minimal</SelectItem>
-                    <SelectItem value="biophilic">Biophilic Natural</SelectItem>
-                    <SelectItem value="brutalist">Contemporary Concrete</SelectItem>
-                    <SelectItem value="minimal_clean">Minimal Scandinavian</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-secondary/30 p-3 rounded-lg border border-border/60">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs font-medium">Style:</Label>
+                  <Select value={style3D} onValueChange={setStyle3D}>
+                    <SelectTrigger className="h-8 text-xs w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="photorealistic">Photorealistic Luxury</SelectItem>
+                      <SelectItem value="japandi">Japandi Warm Minimal</SelectItem>
+                      <SelectItem value="biophilic">Biophilic Natural</SelectItem>
+                      <SelectItem value="brutalist">Contemporary Concrete</SelectItem>
+                      <SelectItem value="minimal_clean">Minimal Scandinavian</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs font-medium">Material Palette:</Label>
+                  <Select value={materialPalette} onValueChange={setMaterialPalette}>
+                    <SelectTrigger className="h-8 text-xs w-52">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MATERIAL_PALETTES.map((mat) => (
+                        <SelectItem key={mat.id} value={mat.id}>
+                          {mat.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
               <Button
                 size="sm"
                 onClick={handleRender3D}
                 disabled={render3D.isPending || !canAfford3D}
-                className="h-8 text-xs"
+                className="h-8 text-xs ml-auto"
               >
                 {render3D.isPending ? (
                   <Loader2 className="size-3.5 animate-spin mr-1.5" />
@@ -1190,7 +1227,7 @@ function FloorPlanPage() {
                   <Loader2 className="mx-auto size-8 animate-spin text-primary" />
                   <p className="text-sm font-medium">Generating 3D Isometric Cutaway…</p>
                   <p className="text-xs text-muted-foreground">
-                    Translating 2D room boundaries into 3D furnished architectural geometry
+                    Translating 2D room boundaries into 3D furnished architectural geometry with {MATERIAL_PALETTES.find((p) => p.id === materialPalette)?.label}
                   </p>
                 </div>
               ) : (
@@ -1204,11 +1241,18 @@ function FloorPlanPage() {
             </div>
 
             {render3DResult && (
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
                 <Badge variant="outline" className="text-[10px]">
-                  16:9 8K UHD Architectural 3D Cutaway
+                  16:9 8K UHD Architectural 3D Cutaway · {MATERIAL_PALETTES.find((p) => p.id === materialPalette)?.label}
                 </Badge>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSheetOpen(true)}
+                  >
+                    <FileText className="size-4 mr-1.5" /> Presentation Sheet
+                  </Button>
                   <Button variant="outline" size="sm" asChild>
                     <a
                       href={render3DResult}
@@ -1216,7 +1260,7 @@ function FloorPlanPage() {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      <Download className="size-4 mr-1.5" /> Download 3D Render
+                      <Download className="size-4 mr-1.5" /> Download
                     </a>
                   </Button>
                   <Button
@@ -1224,7 +1268,7 @@ function FloorPlanPage() {
                     size="sm"
                     onClick={() => window.open(render3DResult, "_blank")}
                   >
-                    <Maximize2 className="size-4 mr-1.5" /> Fullscreen View
+                    <Maximize2 className="size-4 mr-1.5" /> Fullscreen
                   </Button>
                 </div>
               </div>
@@ -1232,6 +1276,22 @@ function FloorPlanPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* 3D Floor Plan Presentation Sheet */}
+      {render3DResult && (
+        <PresentationSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          imageUrl={render3DResult}
+          title={`${planName} · 3D Cutaway`}
+          prompt={`3D Isometric floor plan cutaway layout for ${bhk} BHK (${plot}). Material finishes: ${MATERIAL_PALETTES.find((p) => p.id === materialPalette)?.desc}`}
+          tool="Floor Plan 3D"
+          stylePreset={style3D}
+          lightingMood="Architectural Illumination"
+          aspectRatio="16:9"
+          authorName={creditProfile?.full_name ?? "ArchiGen Studio"}
+        />
+      )}
     </>
   );
 }

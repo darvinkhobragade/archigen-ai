@@ -16,6 +16,8 @@ import {
   Unlock,
   Shuffle,
   Layers,
+  Ruler,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,10 +33,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { PresentationSheet } from "@/components/archigen/presentation-sheet";
 import { CONCEPTUAL_NOTE } from "@/lib/archigen-data";
 import { supabase } from "@/integrations/supabase/client";
 import { useGenerateDesign, useEnhancePrompt } from "@/hooks/use-generate";
 import { useProfile } from "@/hooks/use-profile";
+import { useAppSettings } from "@/hooks/use-app-settings";
 import { Link } from "@tanstack/react-router";
 
 export function PageHeader({
@@ -88,6 +92,7 @@ export function GeneratorCanvas({
   children: ReactNode;
   sourceImage?: string | null;
 }) {
+  const { settings: appSettings } = useAppSettings();
   const [result, setResult] = useState<{
     id: string;
     url: string;
@@ -104,17 +109,19 @@ export function GeneratorCanvas({
   const [seedVal, setSeedVal] = useState<number | "">("");
   const [lockSeed, setLockSeed] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [sliderPos, setSliderPos] = useState(50);
   const [copied, setCopied] = useState(false);
 
   const generation = useGenerateDesign();
   const { data: profile } = useProfile();
   const credits = profile?.credits ?? 0;
-  const canAfford = credits >= cost;
+  const effectiveCost = appSettings.hires ? cost + 1 : cost;
+  const canAfford = credits >= effectiveCost;
 
   const generate = async () => {
     if (!canAfford) {
-      toast.error("Not enough credits", { description: `This action needs ${cost} credits.` });
+      toast.error("Not enough credits", { description: `This action needs ${effectiveCost} credits.` });
       return;
     }
     const request = buildRequest();
@@ -127,9 +134,13 @@ export function GeneratorCanvas({
 
     const data = await generation.mutateAsync({
       tool,
-      cost,
+      cost: effectiveCost,
       prompt: request.prompt,
-      settings: request.settings,
+      settings: {
+        ...request.settings,
+        hires: appSettings.hires ? "true" : "false",
+        watermark: appSettings.watermark ? "true" : "false",
+      },
       stylePreset: request.stylePreset || stylePreset,
       aspectRatio: request.aspectRatio || aspectRatio,
       lightingMood: request.lightingMood || lightingMood,
@@ -143,7 +154,10 @@ export function GeneratorCanvas({
       setSeedVal(data.seed);
     }
     setFavorite(false);
-    toast.success("High-fidelity concept rendered", { description: `${cost} credits used.` });
+    const autoSaveDesc = appSettings.autosave ? " · saved to active project" : "";
+    toast.success("High-fidelity concept rendered", {
+      description: `${effectiveCost} credits used${appSettings.hires ? " (8K UHD)" : ""}${autoSaveDesc}.`,
+    });
   };
 
   const toggleFavorite = async () => {
@@ -340,7 +354,7 @@ export function GeneratorCanvas({
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <p className="font-medium text-destructive">Not enough credits</p>
             <p className="mt-1 text-muted-foreground">
-              You have {credits} — this needs {cost}.{" "}
+              You have {credits} — this needs {effectiveCost}.{" "}
               <Link to="/pricing" className="text-primary underline underline-offset-4">
                 Top up
               </Link>
@@ -350,7 +364,7 @@ export function GeneratorCanvas({
 
         <div className="flex items-center justify-between border-t border-border pt-4">
           <span className="label-caps">
-            Cost {cost} credits · {credits} left
+            Cost {effectiveCost} credits {appSettings.hires ? "(8K HD)" : ""} · {credits} left
           </span>
           <Button onClick={generate} disabled={isBusy || !canAfford}>
             {isBusy ? (
@@ -429,6 +443,21 @@ export function GeneratorCanvas({
                     loading="lazy"
                     className="size-full object-cover contrast-[1.03] saturate-[1.02]"
                   />
+                  {appSettings.watermark && (
+                    <div className="absolute top-3 left-3 z-10 pointer-events-none">
+                      <div className="flex items-center gap-1.5 rounded bg-black/75 backdrop-blur px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/95 border border-white/10 shadow-md">
+                        <Ruler className="size-3 text-primary" />
+                        <span>ArchiGen AI · Conceptual</span>
+                      </div>
+                    </div>
+                  )}
+                  {appSettings.hires && (
+                    <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
+                      <Badge className="bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase tracking-wider shadow-sm">
+                        8K UHD
+                      </Badge>
+                    </div>
+                  )}
                   <Button
                     variant="secondary"
                     size="icon"
@@ -499,9 +528,14 @@ export function GeneratorCanvas({
             </Button>
 
             {result && (
-              <Button variant="ghost" size="sm" onClick={() => setZoomOpen(true)}>
-                <Maximize2 className="size-4" /> Zoom
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setZoomOpen(true)}>
+                  <Maximize2 className="size-4" /> Zoom
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSheetOpen(true)}>
+                  <FileText className="size-4" /> Presentation Sheet
+                </Button>
+              </>
             )}
 
             <Button variant="outline" size="sm" disabled={!result || isBusy} asChild={!!result}>
@@ -539,6 +573,23 @@ export function GeneratorCanvas({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Architectural Presentation Sheet Modal */}
+      {result && (
+        <PresentationSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          imageUrl={result.url}
+          title={`${tool.charAt(0).toUpperCase() + tool.slice(1)} Concept Design`}
+          prompt={result.prompt}
+          tool={tool}
+          stylePreset={stylePreset}
+          lightingMood={lightingMood}
+          aspectRatio={aspectRatio}
+          seed={result.seed}
+          authorName={profile?.full_name ?? "ArchiGen Studio"}
+        />
+      )}
     </div>
   );
 }
