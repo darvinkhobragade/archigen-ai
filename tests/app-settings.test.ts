@@ -46,7 +46,7 @@ describe("useAppSettings Hook and Store", () => {
       lowCreditAlerts: false,
     };
     mockStorage.setItem("archigen_user_settings", JSON.stringify(custom));
-    const stored = JSON.parse(mockStorage.getItem("archigen_user_settings") || "{}");
+    const stored = JSON.parse(mockStorage.getItem("archigen_user_settings") || "{}") as AppSettings;
     expect(stored.hires).toBe(true);
     expect(stored.watermark).toBe(false);
     expect(stored.lowCreditAlerts).toBe(false);
