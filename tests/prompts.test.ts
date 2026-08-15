@@ -22,10 +22,10 @@ describe("AI Architectural Prompt Synthesizer & Guardrails", () => {
 
     expect(prompt).toContain("Architectural exterior master photography");
     expect(prompt).toContain("Modern cantilevered concrete villa in forest");
-    expect(prompt).toContain(STYLE_PRESETS["photorealistic"]);
-    expect(prompt).toContain(LIGHTING_PRESETS["golden_hour"]);
-    expect(prompt).toContain(CAMERA_PRESETS["eye_level"]);
-    expect(prompt).toContain(ASPECT_RATIOS["16:9"].modifier);
+    expect(prompt).toContain(STYLE_PRESETS["photorealistic"] ?? "");
+    expect(prompt).toContain(LIGHTING_PRESETS["golden_hour"] ?? "");
+    expect(prompt).toContain(CAMERA_PRESETS["eye_level"] ?? "");
+    expect(prompt).toContain(ASPECT_RATIOS["16:9"]?.modifier ?? "");
     expect(prompt).toContain(ARCHITECTURAL_NEGATIVE_GUARDRAILS);
   });
 
@@ -42,7 +42,7 @@ describe("AI Architectural Prompt Synthesizer & Guardrails", () => {
 
     expect(prompt).toContain("Interior design editorial photography");
     expect(prompt).toContain("Minimalist Japanese tea room living space");
-    expect(prompt).toContain(STYLE_PRESETS["japandi"]);
+    expect(prompt).toContain(STYLE_PRESETS["japandi"] ?? "");
     expect(prompt).toContain("crystal clear depth");
     expect(prompt).toContain(ARCHITECTURAL_NEGATIVE_GUARDRAILS);
   });
@@ -60,7 +60,7 @@ describe("AI Architectural Prompt Synthesizer & Guardrails", () => {
 
     expect(prompt).toContain("Architectural room restyle and interior transformation");
     expect(prompt).toContain("Maintain exact room boundaries, window positions, ceiling height");
-    expect(prompt).toContain(STYLE_PRESETS["luxury_penthouse"]);
+    expect(prompt).toContain(STYLE_PRESETS["luxury_penthouse"] ?? "");
     expect(prompt).toContain(ARCHITECTURAL_NEGATIVE_GUARDRAILS);
   });
 

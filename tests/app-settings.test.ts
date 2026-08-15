@@ -58,7 +58,7 @@ describe("useAppSettings Hook and Store", () => {
       try {
         JSON.parse(mockStorage.getItem("archigen_user_settings") || "{}");
       } catch {
-        return DEFAULT_SETTINGS;
+        // fallback to default on error
       }
     }).not.toThrow();
   });

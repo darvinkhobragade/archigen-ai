@@ -11,6 +11,12 @@ jobs:
     name: Typecheck, Test & Build
     runs-on: ubuntu-latest
 
+    env:
+      VITE_SUPABASE_URL: https://tiwbuodgdxctsvtjyhxi.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ifm1sA_VDBNWBBz2F3ac8Q_Perpuzpf
+      SUPABASE_URL: https://tiwbuodgdxctsvtjyhxi.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_ifm1sA_VDBNWBBz2F3ac8Q_Perpuzpf
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -22,7 +28,7 @@ jobs:
           cache: npm
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Static Typecheck
         run: npx tsc --noEmit
