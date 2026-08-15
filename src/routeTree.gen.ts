@@ -16,7 +16,6 @@ import { Route as AuthenticatedArchitectureRouteImport } from './routes/_authent
 import { Route as AuthenticatedAssistantRouteImport } from './routes/_authenticated/assistant'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFloorPlanRouteImport } from './routes/_authenticated/floor-plan'
-import { Route as AuthenticatedGalleryRouteImport } from './routes/_authenticated/gallery'
 import { Route as AuthenticatedInteriorRouteImport } from './routes/_authenticated/interior'
 import { Route as AuthenticatedPricingRouteImport } from './routes/_authenticated/pricing'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
@@ -58,11 +57,6 @@ const AuthenticatedFloorPlanRoute = AuthenticatedFloorPlanRouteImport.update({
   path: '/floor-plan',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedGalleryRoute = AuthenticatedGalleryRouteImport.update({
-  id: '/gallery',
-  path: '/gallery',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedInteriorRoute = AuthenticatedInteriorRouteImport.update({
   id: '/interior',
   path: '/interior',
@@ -96,7 +90,6 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/floor-plan': typeof AuthenticatedFloorPlanRoute
-  '/gallery': typeof AuthenticatedGalleryRoute
   '/interior': typeof AuthenticatedInteriorRoute
   '/pricing': typeof AuthenticatedPricingRoute
   '/projects': typeof AuthenticatedProjectsRoute
@@ -110,7 +103,6 @@ export interface FileRoutesByTo {
   '/assistant': typeof AuthenticatedAssistantRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/floor-plan': typeof AuthenticatedFloorPlanRoute
-  '/gallery': typeof AuthenticatedGalleryRoute
   '/interior': typeof AuthenticatedInteriorRoute
   '/pricing': typeof AuthenticatedPricingRoute
   '/projects': typeof AuthenticatedProjectsRoute
@@ -126,7 +118,6 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/floor-plan': typeof AuthenticatedFloorPlanRoute
-  '/_authenticated/gallery': typeof AuthenticatedGalleryRoute
   '/_authenticated/interior': typeof AuthenticatedInteriorRoute
   '/_authenticated/pricing': typeof AuthenticatedPricingRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
@@ -142,7 +133,6 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/dashboard'
     | '/floor-plan'
-    | '/gallery'
     | '/interior'
     | '/pricing'
     | '/projects'
@@ -156,7 +146,6 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/dashboard'
     | '/floor-plan'
-    | '/gallery'
     | '/interior'
     | '/pricing'
     | '/projects'
@@ -171,7 +160,6 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/_authenticated/dashboard'
     | '/_authenticated/floor-plan'
-    | '/_authenticated/gallery'
     | '/_authenticated/interior'
     | '/_authenticated/pricing'
     | '/_authenticated/projects'
@@ -236,13 +224,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFloorPlanRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/gallery': {
-      id: '/_authenticated/gallery'
-      path: '/gallery'
-      fullPath: '/gallery'
-      preLoaderRoute: typeof AuthenticatedGalleryRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/interior': {
       id: '/_authenticated/interior'
       path: '/interior'
@@ -286,7 +267,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssistantRoute: typeof AuthenticatedAssistantRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFloorPlanRoute: typeof AuthenticatedFloorPlanRoute
-  AuthenticatedGalleryRoute: typeof AuthenticatedGalleryRoute
   AuthenticatedInteriorRoute: typeof AuthenticatedInteriorRoute
   AuthenticatedPricingRoute: typeof AuthenticatedPricingRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
@@ -299,7 +279,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssistantRoute: AuthenticatedAssistantRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFloorPlanRoute: AuthenticatedFloorPlanRoute,
-  AuthenticatedGalleryRoute: AuthenticatedGalleryRoute,
   AuthenticatedInteriorRoute: AuthenticatedInteriorRoute,
   AuthenticatedPricingRoute: AuthenticatedPricingRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,

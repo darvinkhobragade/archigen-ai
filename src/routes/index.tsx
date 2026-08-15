@@ -139,7 +139,7 @@ function Landing() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline">
-                <Link to="/gallery">Browse the gallery</Link>
+                <a href="#showcase">View showcase</a>
               </Button>
             </div>
             <p className="label-caps mt-10 max-w-md">{CONCEPTUAL_NOTE}</p>

@@ -10,7 +10,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   Coins,
-  Images,
   LayoutDashboard,
   MessageSquare,
   Ruler,
@@ -50,7 +49,6 @@ const nav = [
   { to: "/redesign", label: "Room Redesign", icon: Wand2 },
   { to: "/floor-plan", label: "Floor Plan", icon: Ruler },
   { to: "/projects", label: "Projects", icon: FolderKanban },
-  { to: "/gallery", label: "Gallery", icon: Images },
   { to: "/assistant", label: "AI Assistant", icon: MessageSquare },
   { to: "/pricing", label: "Credits & Plans", icon: Coins },
   { to: "/settings", label: "Settings", icon: Settings },

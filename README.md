@@ -51,7 +51,7 @@
 - Consult with an AI architect and zoning advisor for building codes, material specifications, acoustic engineering, and structural recommendations.
 - Interactive multi-turn chat with context-aware design insights.
 
-### 💼 6. Project Management & Gallery
+### 💼 6. Project Management
 - Organize generations into dedicated projects and client boards.
 - High-res cloud storage powered by Supabase Storage with direct download & sharing.
 

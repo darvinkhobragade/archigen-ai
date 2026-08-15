@@ -108,7 +108,7 @@ export const plans = [
       "All four generators",
       "Watermarked downloads",
       "3 saved projects",
-      "Community gallery",
+      "Design presets",
     ],
     cta: "Current plan",
     featured: false,
