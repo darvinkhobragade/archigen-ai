@@ -166,6 +166,9 @@ export type PlanRoom = {
     | "pooja"
     | "foyer"
     | "utility"
+    | "parking"
+    | "staircase"
+    | "sitout"
     | undefined;
   x: number;
   y: number;
@@ -175,7 +178,15 @@ export type PlanRoom = {
 
 export const generateFloorPlan = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { brief: string; bhk: number; plot: string }) => input)
+  .inputValidator(
+    (input: {
+      brief: string;
+      bhk: number;
+      plot: string;
+      builtUpArea?: string | number | undefined;
+      facing?: string | undefined;
+    }) => input,
+  )
   .handler(async ({ data, context }): Promise<{ rooms: PlanRoom[]; creditsLeft: number }> => {
     const { supabase, userId } = context;
     const cost = 5;
@@ -199,7 +210,7 @@ export const generateFloorPlan = createServerFn({ method: "POST" })
           { role: "system", content: FLOOR_PLAN_SYSTEM },
           {
             role: "user",
-            content: `Plot: ${data.plot}. Configuration: ${data.bhk} BHK. Notes: ${data.brief || "none"}.`,
+            content: `Plot Dimensions: ${data.plot}. Target Built-up Area: ${data.builtUpArea || "Full plot coverage"}. Configuration: ${data.bhk} BHK. Plot Facing: ${data.facing || "North"}. Specific Instructions & Requirements: ${data.brief || "Standard Vastu compliant layout with parking, living lounge, dining, modular kitchen, and attached bathrooms"}.`,
           },
         ],
         { json: true },
@@ -233,14 +244,91 @@ export const generateFloorPlan = createServerFn({ method: "POST" })
     await supabase.from("generations").insert({
       user_id: userId,
       tool: "floor-plan",
-      prompt: data.brief,
-      settings: { bhk: data.bhk, plot: data.plot },
+      prompt: data.brief || `${data.bhk} BHK ${data.builtUpArea || data.plot}`,
+      settings: {
+        bhk: data.bhk,
+        plot: data.plot,
+        built_up_area: data.builtUpArea,
+        facing: data.facing,
+      },
       plan_data: rooms,
       credits_spent: cost,
       status: "complete",
     });
 
     return { rooms, creditsLeft: creditsLeft ?? 0 };
+  });
+
+export const render2DColorFloorPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { rooms: PlanRoom[]; bhk: number; plot: string; stylePreset?: string | undefined }) =>
+      input,
+  )
+  .handler(async ({ data, context }): Promise<{ url: string; creditsLeft: number }> => {
+    const { supabase, userId } = context;
+    const cost = 4;
+    const { buildFloorPlan2DColorPrompt } = await import("@/lib/ai/prompts");
+    const { generateImageBytes } = await import("@/lib/ai/archigen.server");
+
+    const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
+      _cost: cost,
+      _reason: "2D color floor-plan render",
+    });
+    if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
+
+    const refund = async () => {
+      await supabase.rpc("refund_credits", { _amount: cost, _reason: "2D floor-plan refund" });
+    };
+
+    let result: { bytes: Uint8Array; contentType: string; seed: number };
+    try {
+      const prompt = buildFloorPlan2DColorPrompt(
+        data.rooms,
+        data.bhk,
+        data.plot,
+        data.stylePreset || "photorealistic",
+      );
+      result = await generateImageBytes(prompt, undefined, "floor-plan", "9:16");
+    } catch (err) {
+      await refund();
+      throw err;
+    }
+
+    const ext = result.contentType.includes("svg")
+      ? "svg"
+      : result.contentType.includes("png")
+        ? "png"
+        : "jpg";
+    const imagePath = `${userId}/2d-color-plan-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("renders")
+      .upload(imagePath, result.bytes, { contentType: result.contentType, upsert: false });
+    if (uploadError) {
+      await refund();
+      throw new Error(uploadError.message);
+    }
+
+    await supabase.from("generations").insert({
+      user_id: userId,
+      tool: "floor-plan",
+      prompt: `2D Color Presentation Plan: ${data.bhk} BHK (${data.plot})`,
+      settings: {
+        bhk: data.bhk,
+        plot: data.plot,
+        style_preset: data.stylePreset || "photorealistic",
+        mode: "2d_color_presentation",
+      },
+      image_path: imagePath,
+      plan_data: data.rooms,
+      credits_spent: cost,
+      status: "complete",
+    });
+
+    const { data: signed } = await supabase.storage
+      .from("renders")
+      .createSignedUrl(imagePath, 3600);
+    return { url: signed?.signedUrl ?? "", creditsLeft: creditsLeft ?? 0 };
   });
 
 export const render3DFloorPlan = createServerFn({ method: "POST" })
@@ -273,7 +361,7 @@ export const render3DFloorPlan = createServerFn({ method: "POST" })
         data.plot,
         data.stylePreset || "photorealistic",
       );
-      result = await generateImageBytes(prompt, undefined, "architecture", "16:9");
+      result = await generateImageBytes(prompt, undefined, "floor-plan", "16:9");
     } catch (err) {
       await refund();
       throw err;

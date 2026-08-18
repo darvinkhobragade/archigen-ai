@@ -8,7 +8,15 @@ export type SavedPlan = {
   id: string;
   prompt: string | null;
   rooms: PlanRoom[];
-  settings: { bhk?: number; plot?: string };
+  settings: {
+    bhk?: number;
+    plot?: string;
+    render2d_url?: string | null;
+    render3d_url?: string | null;
+    style3D?: string;
+    materialPalette?: string;
+  };
+  image_path?: string | null;
   created_at: string;
 };
 
@@ -21,7 +29,7 @@ export function useFloorPlans() {
 
       const { data, error } = await supabase
         .from("generations")
-        .select("id, prompt, plan_data, settings, created_at")
+        .select("id, prompt, plan_data, settings, image_path, created_at")
         .eq("tool", "floor-plan")
         .order("created_at", { ascending: false })
         .limit(20);
@@ -31,7 +39,15 @@ export function useFloorPlans() {
         id: row.id,
         prompt: row.prompt,
         rooms: (Array.isArray(row.plan_data) ? row.plan_data : []) as unknown as PlanRoom[],
-        settings: (row.settings ?? {}) as { bhk?: number; plot?: string },
+        settings: (row.settings ?? {}) as {
+          bhk?: number;
+          plot?: string;
+          render2d_url?: string | null;
+          render3d_url?: string | null;
+          style3D?: string;
+          materialPalette?: string;
+        },
+        image_path: row.image_path,
         created_at: row.created_at,
       }));
     },
@@ -42,7 +58,19 @@ export function useFloorPlans() {
 export function useSaveFloorPlan() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id?: string | null; name: string; rooms: PlanRoom[] }) => {
+    mutationFn: async (input: {
+      id?: string | null;
+      name: string;
+      rooms: PlanRoom[];
+      settings?: {
+        bhk?: number;
+        plot?: string;
+        render2d_url?: string | null;
+        render3d_url?: string | null;
+        style3D?: string;
+        materialPalette?: string;
+      };
+    }) => {
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
       if (!user) throw new Error("You need to be signed in to save plans.");
@@ -50,7 +78,11 @@ export function useSaveFloorPlan() {
       if (input.id) {
         const { error } = await supabase
           .from("generations")
-          .update({ prompt: input.name, plan_data: input.rooms as never })
+          .update({
+            prompt: input.name,
+            plan_data: input.rooms as never,
+            ...(input.settings ? { settings: input.settings as never } : {}),
+          })
           .eq("id", input.id);
         if (error) throw error;
         return input.id;
@@ -63,6 +95,7 @@ export function useSaveFloorPlan() {
           tool: "floor-plan",
           prompt: input.name,
           plan_data: input.rooms as never,
+          settings: (input.settings ?? {}) as never,
           credits_spent: 0,
           status: "complete",
         })

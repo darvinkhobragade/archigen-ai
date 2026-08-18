@@ -8,6 +8,7 @@ import {
   enhancePromptServer,
   generateDesign,
   generateFloorPlan,
+  render2DColorFloorPlan,
   render3DFloorPlan,
   type GenerateInput,
   type PlanRoom,
@@ -38,7 +39,31 @@ export function useGenerateFloorPlan() {
   const queryClient = useQueryClient();
   const run = useServerFn(generateFloorPlan);
   return useMutation({
-    mutationFn: (input: { brief: string; bhk: number; plot: string }) => run({ data: input }),
+    mutationFn: (input: {
+      brief: string;
+      bhk: number;
+      plot: string;
+      builtUpArea?: string | number | undefined;
+      facing?: string | undefined;
+    }) => run({ data: input }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useRender2DColorFloorPlan() {
+  const queryClient = useQueryClient();
+  const run = useServerFn(render2DColorFloorPlan);
+  return useMutation({
+    mutationFn: (input: {
+      rooms: PlanRoom[];
+      bhk: number;
+      plot: string;
+      stylePreset?: string | undefined;
+    }) => run({ data: input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["credit-history"] });

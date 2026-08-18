@@ -63,16 +63,55 @@ function createFallbackSvgBytes(
   tool: string = "architecture",
   watermark: boolean = true,
 ): { bytes: Uint8Array; contentType: string; seed: number } {
-  const title = prompt.slice(0, 60) + (prompt.length > 60 ? "…" : "");
+  const title = prompt.slice(0, 75) + (prompt.length > 75 ? "…" : "");
   const isInterior = tool === "interior";
   const isRedesign = tool === "redesign";
+  const isFloorPlan = tool === "floor-plan";
 
-  const primaryGradientStart = isInterior ? "#1e293b" : isRedesign ? "#0f172a" : "#0c1427";
-  const primaryGradientEnd = isInterior ? "#334155" : isRedesign ? "#1e293b" : "#1e293b";
-  const accentColor = isInterior ? "#f59e0b" : isRedesign ? "#ec4899" : "#3b82f6";
+  const primaryGradientStart = isInterior ? "#1e293b" : isRedesign ? "#0f172a" : isFloorPlan ? "#f8fafc" : "#0c1427";
+  const primaryGradientEnd = isInterior ? "#334155" : isRedesign ? "#1e293b" : isFloorPlan ? "#f1f5f9" : "#1e293b";
+  const accentColor = isInterior ? "#f59e0b" : isRedesign ? "#ec4899" : isFloorPlan ? "#ea580c" : "#3b82f6";
   const glassGlow = isInterior ? "#fef3c7" : "#bfdbfe";
 
-  const svg = `
+  const svg = isFloorPlan
+    ? `
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1300" width="1000" height="1300">
+    <defs>
+      <pattern id="wood" width="40" height="20" patternUnits="userSpaceOnUse">
+        <rect width="40" height="20" fill="#f7eee6"/>
+        <line x1="0" y1="20" x2="40" y2="20" stroke="#e2d4c7" stroke-width="1"/>
+      </pattern>
+      <pattern id="marble" width="30" height="30" patternUnits="userSpaceOnUse">
+        <rect width="30" height="30" fill="#faf6f0"/>
+        <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#e7e0d6" stroke-width="1"/>
+      </pattern>
+    </defs>
+    <rect width="1000" height="1300" fill="#ffffff"/>
+    <text x="500" y="60" text-anchor="middle" fill="#c2410c" font-family="sans-serif" font-size="28" font-weight="900" letter-spacing="2">ARCHITECTURAL PRESENTATION FLOOR PLAN</text>
+    <rect x="80" y="90" width="840" height="1100" fill="none" stroke="#0f172a" stroke-width="8"/>
+    <!-- Living & Dining -->
+    <rect x="80" y="90" width="480" height="420" fill="url(#marble)" stroke="#1e293b" stroke-width="6"/>
+    <text x="320" y="300" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="22" font-weight="bold">LIVING &amp; DINING</text>
+    <!-- Kitchen -->
+    <rect x="560" y="90" width="360" height="300" fill="#f1f5f9" stroke="#1e293b" stroke-width="6"/>
+    <text x="740" y="240" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="20" font-weight="bold">KITCHEN</text>
+    <!-- Master Bedroom -->
+    <rect x="80" y="510" width="440" height="380" fill="url(#wood)" stroke="#1e293b" stroke-width="6"/>
+    <text x="300" y="700" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="20" font-weight="bold">MASTER BEDROOM</text>
+    <!-- Bedroom 2 -->
+    <rect x="520" y="390" width="400" height="400" fill="url(#wood)" stroke="#1e293b" stroke-width="6"/>
+    <text x="720" y="590" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="20" font-weight="bold">BEDROOM 2</text>
+    <!-- Parking & Sitout -->
+    <rect x="520" y="790" width="400" height="400" fill="#e2e8f0" stroke="#1e293b" stroke-width="6"/>
+    <text x="720" y="990" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="20" font-weight="bold">PARKING &amp; CAR</text>
+    <!-- Sitout -->
+    <rect x="80" y="890" width="440" height="300" fill="#cbd5e1" stroke="#1e293b" stroke-width="6"/>
+    <text x="300" y="1040" text-anchor="middle" fill="#0f172a" font-family="sans-serif" font-size="20" font-weight="bold">SIT OUT &amp; FOYER</text>
+    <!-- Title Banner -->
+    <rect x="60" y="1210" width="880" height="50" rx="8" fill="#0f172a" opacity="0.9"/>
+    <text x="500" y="1242" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="16">${title}</text>
+  </svg>`
+    : `
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
     <defs>
       <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">

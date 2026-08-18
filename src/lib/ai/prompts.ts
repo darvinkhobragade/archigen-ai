@@ -159,7 +159,7 @@ Incorporate:
 
 Output ONLY the expanded, high-fidelity prompt in 2 to 3 rich sentences. Do NOT include markdown fences, prefixes, or commentary.`;
 
-export const FLOOR_PLAN_SYSTEM = `You are a master architectural space planner producing professional CONCEPTUAL residential floor plans.
+export const FLOOR_PLAN_SYSTEM = `You are a master architectural space planner and Vastu expert producing professional CONCEPTUAL residential floor plans based on exact user plot size, target built-up area, BHK requirements, and specific design instructions.
 Return ONLY valid JSON of the shape:
 {
   "rooms": [
@@ -170,28 +170,76 @@ Return ONLY valid JSON of the shape:
 }
 
 Space Planning & Vastu Rules:
-1. Valid types: "living", "master_bedroom", "bedroom", "kitchen", "dining", "bathroom", "balcony", "pooja", "foyer", "utility".
-2. Units are feet on a rectangular grid starting at (0, 0).
-3. Rooms must tightly tile the given plot dimensions without overlapping.
-4. Apply Vastu zoning:
+1. Valid types: "living", "master_bedroom", "bedroom", "kitchen", "dining", "bathroom", "balcony", "pooja", "foyer", "utility", "parking", "staircase", "sitout".
+2. Units are feet on a rectangular grid starting at (0, 0) up to (plotWidth, plotDepth).
+3. Rooms must fit tightly within the plot dimensions without overlapping. All rooms must have positive x, y, w, h integers.
+4. The sum of all room areas (w * h) should closely match the requested Target Built-up Area (or full plot footprint if 100% coverage).
+5. Strictly adhere to user's custom instructions regarding room requirements (e.g. attached toilets for each bedroom, parking bay with car, puja room, open kitchen, sit-out verandah, utility wash area).
+6. Apply Vastu zoning according to plot facing (North/East/South/West):
    - Master Bedroom in South-West (Nairutya).
-   - Kitchen & Utility in South-East (Agneya).
+   - Kitchen & Utility in South-East (Agneya) or North-West (Vayavya).
    - Pooja / Meditation in North-East (Ishanya).
-   - Living & Foyer in North or East.
+   - Living, Foyer & Sit-out in North or East facing the entrance.
    - Bathrooms in West / North-West.
-5. Provide realistic room proportions and practical circulation. Total rooms between 4 and 10.
+   - Parking & Sit-out in front.
+7. Total room count should be between 5 and 16 depending on BHK configuration.
 Never output markdown fences, prefixes, or commentary.`;
 
-export function buildFloorPlan3DPrompt(
-  rooms: Array<{ name: string; w: number; h: number; type?: string | undefined }>,
+export function describeSpatialFloorPlan(
+  rooms: Array<{ id?: string; name: string; w: number; h: number; x?: number; y?: number; type?: string | undefined }>,
+  bhk: number,
+  plot: string,
+): string {
+  const totalBuiltUp = rooms.reduce((sum, r) => sum + r.w * r.h, 0);
+  const roomList = rooms
+    .map((r) => {
+      const pos =
+        r.x !== undefined && r.y !== undefined
+          ? `at grid (${r.x}ft, ${r.y}ft)`
+          : "";
+      return `${r.name} (${r.w}'0"x${r.h}'0" [${r.w * r.h} sqft] ${pos})`.trim();
+    })
+    .join("; ");
+
+  const hasParking = rooms.some((r) => /parking|garage|car/i.test(r.name) || r.type === "parking");
+  const hasPuja = rooms.some((r) => /puja|pooja|mandir/i.test(r.name) || r.type === "pooja");
+  const hasStair = rooms.some((r) => /stair/i.test(r.name) || r.type === "staircase");
+  const hasSitout = rooms.some((r) => /sitout|sit out|deck|verandah/i.test(r.name) || r.type === "sitout");
+
+  const features = [
+    hasParking ? "covered car parking bay with parked automobile" : "",
+    hasPuja ? "sacred puja prayer room" : "",
+    hasStair ? "internal staircase core with steps" : "",
+    hasSitout ? "front entrance sit-out with garden shrubs" : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return `Exact ${bhk} BHK House Plan on a ${plot} plot (Total Built-up: ${totalBuiltUp} sq ft). Room inventory: ${roomList}. Key architectural elements: ${features || "standard residential spaces"}`;
+}
+
+export function buildFloorPlan2DColorPrompt(
+  rooms: Array<{ id?: string; name: string; w: number; h: number; x?: number; y?: number; type?: string | undefined }>,
   bhk: number,
   plot: string,
   stylePreset: string = "photorealistic",
 ) {
-  const roomSummary = rooms.map((r) => `${r.name} (${r.w}x${r.h} ft)`).join(", ");
+  const spatialSpec = describeSpatialFloorPlan(rooms, bhk, plot);
   const styleModifier = STYLE_PRESETS[stylePreset] || STYLE_PRESETS["photorealistic"];
 
-  return `High-end 3D architectural cutaway floor plan visualization of a ${bhk} BHK layout on a ${plot} plot. Isometric 3D floor plan perspective viewed from a 45-degree elevated angle, showing roof removed and full interior layout. Rooms included: ${roomSummary}. Fully furnished with realistic designer furniture (beds with plush linens, modern L-shaped living sofa, marble dining table, modular kitchen cabinets with polished quartz countertops, sanitary bathroom fixtures). Architectural features: finished hardwood and microcement flooring, exterior glass walls, realistic internal partition walls with door openings, soft interior lighting glow, natural sunlight casting soft shadows. ${styleModifier}. Pristine 3D architectural model render, Octane render, ArchDaily showcase quality, no people, no watermark.`;
+  return `Top-down 2D architectural colored floor plan presentation drawing, 90-degree orthogonal bird's-eye view looking straight down. ${spatialSpec}. Strict drawing requirements: Orthographic architectural presentation layout strictly matching the room dimensions and positions specified. Warm oak wood flooring in bedrooms, polished cream vitrified marble tiles in living and dining, grey stone pavers in parking with a top-down metallic car, green shrub planter pots in sitout, modular kitchen counter with gas stove and double sink, fully staged furniture matching each room (beds with duvets, sofas, dining table, sanitary commodes, puja mandir). Solid thick black partition walls, clear door swing arcs, perimeter window openings, and clean CAD dimension strings. Professional real estate sales brochure presentation, 8K ultra-clean architectural lines, ArchDaily quality, perfectly flat 2D, zero perspective distortion, ${styleModifier}.`;
+}
+
+export function buildFloorPlan3DPrompt(
+  rooms: Array<{ id?: string; name: string; w: number; h: number; x?: number; y?: number; type?: string | undefined }>,
+  bhk: number,
+  plot: string,
+  stylePreset: string = "photorealistic",
+) {
+  const spatialSpec = describeSpatialFloorPlan(rooms, bhk, plot);
+  const styleModifier = STYLE_PRESETS[stylePreset] || STYLE_PRESETS["photorealistic"];
+
+  return `3D architectural cutaway isometric floor plan visualization strictly representing the exact layout: ${spatialSpec}. 45-degree elevated axonometric perspective with roof removed to show the interior layout of the exact rooms specified. Fully furnished corresponding to each room: beds in bedrooms, living room sofa and coffee table, dining set, modular kitchen cabinets with quartz countertops, bathroom fixtures, car parked in the designated parking bay, sit-out verandah. Finished wood and marble flooring, realistic interior partition walls with doorway cutaways, soft interior ambient lighting. Pristine 3D architectural model render, Octane render, ArchDaily quality, ${styleModifier}.`;
 }
 
 export const ASSISTANT_SYSTEM = `You are ArchiGen's design co-pilot: an experienced architect and interior designer
