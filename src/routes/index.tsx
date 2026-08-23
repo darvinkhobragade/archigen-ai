@@ -185,7 +185,7 @@ function Landing() {
                 },
                 {
                   src: images.samplePlan,
-                  alt: "Conceptual blueprint floor plan",
+                  alt: "3D cutaway architectural presentation floor plan",
                   label: "Floor plan",
                 },
               ].map((s) => (
