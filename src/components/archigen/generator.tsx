@@ -116,12 +116,11 @@ export function GeneratorCanvas({
   const generation = useGenerateDesign();
   const { data: profile } = useProfile();
   const credits = profile?.credits ?? 0;
-  const effectiveCost = appSettings.hires ? cost + 1 : cost;
-  const canAfford = credits >= effectiveCost;
+  const canAfford = credits >= cost;
 
   const generate = async () => {
     if (!canAfford) {
-      toast.error("Not enough credits", { description: `This action needs ${effectiveCost} credits.` });
+      toast.error("Not enough credits", { description: `This action needs ${cost} credits.` });
       return;
     }
     const request = buildRequest();
@@ -134,11 +133,10 @@ export function GeneratorCanvas({
 
     const data = await generation.mutateAsync({
       tool,
-      cost: effectiveCost,
+      cost,
       prompt: request.prompt,
       settings: {
         ...request.settings,
-        hires: appSettings.hires ? "true" : "false",
         watermark: appSettings.watermark ? "true" : "false",
       },
       stylePreset: request.stylePreset || stylePreset,
@@ -156,7 +154,7 @@ export function GeneratorCanvas({
     setFavorite(false);
     const autoSaveDesc = appSettings.autosave ? " · saved to active project" : "";
     toast.success("High-fidelity concept rendered", {
-      description: `${effectiveCost} credits used${appSettings.hires ? " (8K UHD)" : ""}${autoSaveDesc}.`,
+      description: `${cost} credits used${autoSaveDesc}.`,
     });
   };
 
@@ -354,7 +352,7 @@ export function GeneratorCanvas({
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <p className="font-medium text-destructive">Not enough credits</p>
             <p className="mt-1 text-muted-foreground">
-              You have {credits} — this needs {effectiveCost}.{" "}
+              You have {credits} — this needs {cost}.{" "}
               <Link to="/pricing" className="text-primary underline underline-offset-4">
                 Top up
               </Link>
@@ -364,7 +362,7 @@ export function GeneratorCanvas({
 
         <div className="flex items-center justify-between border-t border-border pt-4">
           <span className="label-caps">
-            Cost {effectiveCost} credits {appSettings.hires ? "(8K HD)" : ""} · {credits} left
+            Cost {cost} credits · {credits} left
           </span>
           <Button onClick={generate} disabled={isBusy || !canAfford}>
             {isBusy ? (
@@ -449,13 +447,6 @@ export function GeneratorCanvas({
                         <Ruler className="size-3 text-primary" />
                         <span>ArchiGen AI · Conceptual</span>
                       </div>
-                    </div>
-                  )}
-                  {appSettings.hires && (
-                    <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
-                      <Badge className="bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase tracking-wider shadow-sm">
-                        8K UHD
-                      </Badge>
                     </div>
                   )}
                   <Button

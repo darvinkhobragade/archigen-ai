@@ -1,14 +1,12 @@
 import { useSyncExternalStore, useCallback } from "react";
 
 export interface AppSettings {
-  hires: boolean;
   watermark: boolean;
   autosave: boolean;
   lowCreditAlerts: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  hires: false,
   watermark: true,
   autosave: true,
   lowCreditAlerts: true,
