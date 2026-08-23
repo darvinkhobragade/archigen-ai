@@ -84,8 +84,12 @@ function AuthPage() {
           toast.success("Check your inbox to confirm your email.");
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (data.session) {
+          toast.success("Welcome back!");
+          navigate({ to: destination, replace: true });
+        }
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Something went wrong");
