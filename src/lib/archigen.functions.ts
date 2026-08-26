@@ -22,11 +22,12 @@ export type GenerateResult = {
   url: string;
   creditsLeft: number;
   seed: number;
+  projectId?: string | null | undefined;
 };
 
 export const generateDesign = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: GenerateInput) => input)
+  .validator((input: GenerateInput) => input)
   .handler(async ({ data, context }): Promise<GenerateResult> => {
     const { supabase, userId } = context;
     const { buildImagePrompt } = await import("@/lib/ai/prompts");
@@ -87,11 +88,37 @@ export const generateDesign = createServerFn({ method: "POST" })
       throw new Error(uploadError.message);
     }
 
+    // Auto-resolve or create project if not provided
+    let resolvedProjectId = data.projectId;
+    if (!resolvedProjectId) {
+      const projType =
+        data.tool === "interior"
+          ? "Interior"
+          : data.tool === "redesign"
+            ? "Redesign"
+            : "Architecture";
+      const rawTitle =
+        (data.prompt || "").split(".")[0]?.slice(0, 45).trim() ||
+        `${projType} Concept Design`;
+
+      const { data: newProj } = await supabase
+        .from("projects")
+        .insert({
+          user_id: userId,
+          title: rawTitle,
+          type: projType,
+          description: `${data.tool} concept generation`,
+        })
+        .select("id")
+        .single();
+      resolvedProjectId = newProj?.id ?? null;
+    }
+
     const { data: row, error: insertError } = await supabase
       .from("generations")
       .insert({
         user_id: userId,
-        project_id: data.projectId ?? null,
+        project_id: resolvedProjectId ?? null,
         tool: data.tool,
         prompt: data.prompt,
         settings: {
@@ -112,20 +139,33 @@ export const generateDesign = createServerFn({ method: "POST" })
 
     const { data: signed } = await supabase.storage
       .from("renders")
-      .createSignedUrl(imagePath, 3600);
+      .createSignedUrl(imagePath, 3600 * 24 * 7);
+
+    const signedUrl = signed?.signedUrl ?? "";
+
+    if (resolvedProjectId) {
+      await supabase
+        .from("projects")
+        .update({
+          cover_url: signedUrl || imagePath,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", resolvedProjectId);
+    }
 
     return {
       id: row.id,
       imagePath,
-      url: signed?.signedUrl ?? "",
+      url: signedUrl,
       creditsLeft: creditsLeft ?? 0,
       seed: result.seed,
+      projectId: resolvedProjectId,
     };
   });
 
 export const enhancePromptServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { brief: string; tool: string }) => input)
+  .validator((input: { brief: string; tool: string }) => input)
   .handler(async ({ data }): Promise<{ enhanced: string }> => {
     const { enhancePrompt } = await import("@/lib/ai/archigen.server");
 
@@ -142,11 +182,11 @@ export const enhancePromptServer = createServerFn({ method: "POST" })
 
 export const signRender = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { path: string }) => input)
+  .validator((input: { path: string }) => input)
   .handler(async ({ data, context }) => {
     const { data: signed, error } = await context.supabase.storage
       .from("renders")
-      .createSignedUrl(data.path, 3600);
+      .createSignedUrl(data.path, 3600 * 24 * 7);
     if (error) throw new Error(error.message);
     return { url: signed?.signedUrl ?? "" };
   });
@@ -177,230 +217,355 @@ export type PlanRoom = {
 
 export const generateFloorPlan = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
+  .validator(
     (input: {
       brief: string;
       bhk: number;
       plot: string;
       builtUpArea?: string | number | undefined;
       facing?: string | undefined;
+      projectId?: string | null | undefined;
     }) => input,
   )
-  .handler(async ({ data, context }): Promise<{ rooms: PlanRoom[]; creditsLeft: number }> => {
-    const { supabase, userId } = context;
-    const cost = 5;
-    const { chatCompletion } = await import("@/lib/ai/archigen.server");
-    const { FLOOR_PLAN_SYSTEM } = await import("@/lib/ai/prompts");
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{
+      rooms: PlanRoom[];
+      creditsLeft: number;
+      projectId?: string | null;
+      generationId?: string | null;
+    }> => {
+      const { supabase, userId } = context;
+      const cost = 5;
+      const { chatCompletion } = await import("@/lib/ai/archigen.server");
+      const { FLOOR_PLAN_SYSTEM } = await import("@/lib/ai/prompts");
 
-    const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
-      _cost: cost,
-      _reason: "floor-plan generation",
-    });
-    if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
+      const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
+        _cost: cost,
+        _reason: "floor-plan generation",
+      });
+      if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
 
-    const refund = async () => {
-      await supabase.rpc("refund_credits", { _amount: cost, _reason: "floor-plan refund" });
-    };
+      const refund = async () => {
+        await supabase.rpc("refund_credits", { _amount: cost, _reason: "floor-plan refund" });
+      };
 
-    let raw: string;
-    try {
-      raw = await chatCompletion(
-        [
-          { role: "system", content: FLOOR_PLAN_SYSTEM },
-          {
-            role: "user",
-            content: `Plot Dimensions: ${data.plot}. Target Built-up Area: ${data.builtUpArea || "Full plot coverage"}. Configuration: ${data.bhk} BHK. Plot Facing: ${data.facing || "North"}. Specific Instructions & Requirements: ${data.brief || "Standard Vastu compliant layout with parking, living lounge, dining, modular kitchen, and attached bathrooms"}.`,
+      let raw: string;
+      try {
+        raw = await chatCompletion(
+          [
+            { role: "system", content: FLOOR_PLAN_SYSTEM },
+            {
+              role: "user",
+              content: `Plot Dimensions: ${data.plot}. Target Built-up Area: ${data.builtUpArea || "Full plot coverage"}. Configuration: ${data.bhk} BHK. Plot Facing: ${data.facing || "North"}. Specific Instructions & Requirements: ${data.brief || "Standard Vastu compliant layout with parking, living lounge, dining, modular kitchen, and attached bathrooms"}.`,
+            },
+          ],
+          { json: true },
+        );
+      } catch (err) {
+        await refund();
+        throw err;
+      }
+
+      let rooms: PlanRoom[] = [];
+      try {
+        const parsed = JSON.parse(raw) as { rooms?: PlanRoom[] };
+        rooms = (parsed.rooms ?? []).filter(
+          (r) => r && typeof r.w === "number" && typeof r.h === "number",
+        );
+      } catch {
+        await refund();
+        throw new Error("The plan came back malformed. Please try again.");
+      }
+      if (rooms.length === 0) {
+        await refund();
+        throw new Error("No rooms were returned. Try a different brief.");
+      }
+
+      rooms = rooms.map((r, i) => ({
+        ...r,
+        id: r.id || `r${i + 1}`,
+        type: r.type || "bedroom",
+      }));
+
+      // Resolve or auto-create floor plan project
+      let resolvedProjectId = data.projectId;
+      if (!resolvedProjectId) {
+        const { data: existingProj } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("type", "Floor Plan")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        if (existingProj && existingProj.length > 0) {
+          resolvedProjectId = existingProj[0]!.id;
+        } else {
+          const { data: newProj } = await supabase
+            .from("projects")
+            .insert({
+              user_id: userId,
+              title: `${data.bhk} BHK Plan (${data.plot})`,
+              type: "Floor Plan",
+              description: data.brief || `Floor plan layout for ${data.plot}`,
+            })
+            .select("id")
+            .single();
+          resolvedProjectId = newProj?.id ?? null;
+        }
+      }
+
+      const { data: genRow } = await supabase
+        .from("generations")
+        .insert({
+          user_id: userId,
+          project_id: resolvedProjectId ?? null,
+          tool: "floor-plan",
+          prompt: data.brief || `${data.bhk} BHK ${data.builtUpArea || data.plot}`,
+          settings: {
+            bhk: data.bhk,
+            plot: data.plot,
+            built_up_area: data.builtUpArea,
+            facing: data.facing,
           },
-        ],
-        { json: true },
-      );
-    } catch (err) {
-      await refund();
-      throw err;
-    }
+          plan_data: rooms,
+          credits_spent: cost,
+          status: "complete",
+        })
+        .select("id")
+        .single();
 
-    let rooms: PlanRoom[] = [];
-    try {
-      const parsed = JSON.parse(raw) as { rooms?: PlanRoom[] };
-      rooms = (parsed.rooms ?? []).filter(
-        (r) => r && typeof r.w === "number" && typeof r.h === "number",
-      );
-    } catch {
-      await refund();
-      throw new Error("The plan came back malformed. Please try again.");
-    }
-    if (rooms.length === 0) {
-      await refund();
-      throw new Error("No rooms were returned. Try a different brief.");
-    }
+      if (resolvedProjectId) {
+        await supabase
+          .from("projects")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", resolvedProjectId);
+      }
 
-    rooms = rooms.map((r, i) => ({
-      ...r,
-      id: r.id || `r${i + 1}`,
-      type: r.type || "bedroom",
-    }));
-
-    await supabase.from("generations").insert({
-      user_id: userId,
-      tool: "floor-plan",
-      prompt: data.brief || `${data.bhk} BHK ${data.builtUpArea || data.plot}`,
-      settings: {
-        bhk: data.bhk,
-        plot: data.plot,
-        built_up_area: data.builtUpArea,
-        facing: data.facing,
-      },
-      plan_data: rooms,
-      credits_spent: cost,
-      status: "complete",
-    });
-
-    return { rooms, creditsLeft: creditsLeft ?? 0 };
-  });
+      return {
+        rooms,
+        creditsLeft: creditsLeft ?? 0,
+        projectId: resolvedProjectId,
+        generationId: genRow?.id ?? null,
+      };
+    },
+  );
 
 export const render2DColorFloorPlan = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
-    (input: { rooms: PlanRoom[]; bhk: number; plot: string; stylePreset?: string | undefined }) =>
-      input,
+  .validator(
+    (input: {
+      rooms: PlanRoom[];
+      bhk: number;
+      plot: string;
+      stylePreset?: string | undefined;
+      projectId?: string | null | undefined;
+    }) => input,
   )
-  .handler(async ({ data, context }): Promise<{ url: string; creditsLeft: number }> => {
-    const { supabase, userId } = context;
-    const cost = 4;
-    const { buildFloorPlan2DColorPrompt } = await import("@/lib/ai/prompts");
-    const { generateImageBytes } = await import("@/lib/ai/archigen.server");
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{ url: string; creditsLeft: number; projectId?: string | null }> => {
+      const { supabase, userId } = context;
+      const cost = 4;
+      const { buildFloorPlan2DColorPrompt } = await import("@/lib/ai/prompts");
+      const { generateImageBytes } = await import("@/lib/ai/archigen.server");
 
-    const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
-      _cost: cost,
-      _reason: "2D color floor-plan render",
-    });
-    if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
+      const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
+        _cost: cost,
+        _reason: "2D color floor-plan render",
+      });
+      if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
 
-    const refund = async () => {
-      await supabase.rpc("refund_credits", { _amount: cost, _reason: "2D floor-plan refund" });
-    };
+      const refund = async () => {
+        await supabase.rpc("refund_credits", { _amount: cost, _reason: "2D floor-plan refund" });
+      };
 
-    let result: { bytes: Uint8Array; contentType: string; seed: number };
-    try {
-      const prompt = buildFloorPlan2DColorPrompt(
-        data.rooms,
-        data.bhk,
-        data.plot,
-        data.stylePreset || "photorealistic",
-      );
-      result = await generateImageBytes(prompt, undefined, "floor-plan", "9:16");
-    } catch (err) {
-      await refund();
-      throw err;
-    }
+      let result: { bytes: Uint8Array; contentType: string; seed: number };
+      try {
+        const prompt = buildFloorPlan2DColorPrompt(
+          data.rooms,
+          data.bhk,
+          data.plot,
+          data.stylePreset || "photorealistic",
+        );
+        result = await generateImageBytes(prompt, undefined, "floor-plan", "9:16");
+      } catch (err) {
+        await refund();
+        throw err;
+      }
 
-    const ext = result.contentType.includes("svg")
-      ? "svg"
-      : result.contentType.includes("png")
-        ? "png"
-        : "jpg";
-    const imagePath = `${userId}/2d-color-plan-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from("renders")
-      .upload(imagePath, result.bytes, { contentType: result.contentType, upsert: false });
-    if (uploadError) {
-      await refund();
-      throw new Error(uploadError.message);
-    }
+      const ext = result.contentType.includes("svg")
+        ? "svg"
+        : result.contentType.includes("png")
+          ? "png"
+          : "jpg";
+      const imagePath = `${userId}/2d-color-plan-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("renders")
+        .upload(imagePath, result.bytes, { contentType: result.contentType, upsert: false });
+      if (uploadError) {
+        await refund();
+        throw new Error(uploadError.message);
+      }
 
-    await supabase.from("generations").insert({
-      user_id: userId,
-      tool: "floor-plan",
-      prompt: `2D Color Presentation Plan: ${data.bhk} BHK (${data.plot})`,
-      settings: {
-        bhk: data.bhk,
-        plot: data.plot,
-        style_preset: data.stylePreset || "photorealistic",
-        mode: "2d_color_presentation",
-      },
-      image_path: imagePath,
-      plan_data: data.rooms,
-      credits_spent: cost,
-      status: "complete",
-    });
+      let resolvedProjectId = data.projectId;
+      if (!resolvedProjectId) {
+        const { data: existingProj } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("type", "Floor Plan")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        resolvedProjectId = existingProj?.[0]?.id ?? null;
+      }
 
-    const { data: signed } = await supabase.storage
-      .from("renders")
-      .createSignedUrl(imagePath, 3600);
-    return { url: signed?.signedUrl ?? "", creditsLeft: creditsLeft ?? 0 };
-  });
+      const { data: signed } = await supabase.storage
+        .from("renders")
+        .createSignedUrl(imagePath, 3600 * 24 * 7);
+
+      const signedUrl = signed?.signedUrl ?? "";
+
+      await supabase.from("generations").insert({
+        user_id: userId,
+        project_id: resolvedProjectId ?? null,
+        tool: "floor-plan",
+        prompt: `2D Color Presentation Plan: ${data.bhk} BHK (${data.plot})`,
+        settings: {
+          bhk: data.bhk,
+          plot: data.plot,
+          style_preset: data.stylePreset || "photorealistic",
+          mode: "2d_color_presentation",
+        },
+        image_path: imagePath,
+        plan_data: data.rooms,
+        credits_spent: cost,
+        status: "complete",
+      });
+
+      if (resolvedProjectId) {
+        await supabase
+          .from("projects")
+          .update({
+            cover_url: signedUrl || imagePath,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", resolvedProjectId);
+      }
+
+      return { url: signedUrl, creditsLeft: creditsLeft ?? 0, projectId: resolvedProjectId };
+    },
+  );
 
 export const render3DFloorPlan = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(
-    (input: { rooms: PlanRoom[]; bhk: number; plot: string; stylePreset?: string | undefined }) =>
-      input,
+  .validator(
+    (input: {
+      rooms: PlanRoom[];
+      bhk: number;
+      plot: string;
+      stylePreset?: string | undefined;
+      projectId?: string | null | undefined;
+    }) => input,
   )
-  .handler(async ({ data, context }): Promise<{ url: string; creditsLeft: number }> => {
-    const { supabase, userId } = context;
-    const cost = 4;
-    const { buildFloorPlan3DPrompt } = await import("@/lib/ai/prompts");
-    const { generateImageBytes } = await import("@/lib/ai/archigen.server");
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{ url: string; creditsLeft: number; projectId?: string | null }> => {
+      const { supabase, userId } = context;
+      const cost = 4;
+      const { buildFloorPlan3DPrompt } = await import("@/lib/ai/prompts");
+      const { generateImageBytes } = await import("@/lib/ai/archigen.server");
 
-    const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
-      _cost: cost,
-      _reason: "3D floor-plan render",
-    });
-    if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
+      const { data: creditsLeft, error: spendError } = await supabase.rpc("spend_credits", {
+        _cost: cost,
+        _reason: "3D floor-plan render",
+      });
+      if (spendError) throw new Error("Not enough credits. Top up on the Credits & Plans page.");
 
-    const refund = async () => {
-      await supabase.rpc("refund_credits", { _amount: cost, _reason: "3D floor-plan refund" });
-    };
+      const refund = async () => {
+        await supabase.rpc("refund_credits", { _amount: cost, _reason: "3D floor-plan refund" });
+      };
 
-    let result: { bytes: Uint8Array; contentType: string; seed: number };
-    try {
-      const prompt = buildFloorPlan3DPrompt(
-        data.rooms,
-        data.bhk,
-        data.plot,
-        data.stylePreset || "photorealistic",
-      );
-      result = await generateImageBytes(prompt, undefined, "floor-plan", "16:9");
-    } catch (err) {
-      await refund();
-      throw err;
-    }
+      let result: { bytes: Uint8Array; contentType: string; seed: number };
+      try {
+        const prompt = buildFloorPlan3DPrompt(
+          data.rooms,
+          data.bhk,
+          data.plot,
+          data.stylePreset || "photorealistic",
+        );
+        result = await generateImageBytes(prompt, undefined, "floor-plan", "16:9");
+      } catch (err) {
+        await refund();
+        throw err;
+      }
 
-    const ext = result.contentType.includes("svg")
-      ? "svg"
-      : result.contentType.includes("png")
-        ? "png"
-        : "jpg";
-    const imagePath = `${userId}/3d-plan-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from("renders")
-      .upload(imagePath, result.bytes, { contentType: result.contentType, upsert: false });
-    if (uploadError) {
-      await refund();
-      throw new Error(uploadError.message);
-    }
+      const ext = result.contentType.includes("svg")
+        ? "svg"
+        : result.contentType.includes("png")
+          ? "png"
+          : "jpg";
+      const imagePath = `${userId}/3d-plan-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("renders")
+        .upload(imagePath, result.bytes, { contentType: result.contentType, upsert: false });
+      if (uploadError) {
+        await refund();
+        throw new Error(uploadError.message);
+      }
 
-    await supabase.from("generations").insert({
-      user_id: userId,
-      tool: "floor-plan",
-      prompt: `3D Isometric Cutaway: ${data.bhk} BHK (${data.plot})`,
-      settings: {
-        bhk: data.bhk,
-        plot: data.plot,
-        style_preset: data.stylePreset || "photorealistic",
-        mode: "3d_isometric",
-      },
-      image_path: imagePath,
-      plan_data: data.rooms,
-      credits_spent: cost,
-      status: "complete",
-    });
+      let resolvedProjectId = data.projectId;
+      if (!resolvedProjectId) {
+        const { data: existingProj } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("type", "Floor Plan")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        resolvedProjectId = existingProj?.[0]?.id ?? null;
+      }
 
-    const { data: signed } = await supabase.storage
-      .from("renders")
-      .createSignedUrl(imagePath, 3600);
-    return { url: signed?.signedUrl ?? "", creditsLeft: creditsLeft ?? 0 };
-  });
+      const { data: signed } = await supabase.storage
+        .from("renders")
+        .createSignedUrl(imagePath, 3600 * 24 * 7);
+
+      const signedUrl = signed?.signedUrl ?? "";
+
+      await supabase.from("generations").insert({
+        user_id: userId,
+        project_id: resolvedProjectId ?? null,
+        tool: "floor-plan",
+        prompt: `3D Isometric Cutaway: ${data.bhk} BHK (${data.plot})`,
+        settings: {
+          bhk: data.bhk,
+          plot: data.plot,
+          style_preset: data.stylePreset || "photorealistic",
+          mode: "3d_isometric",
+        },
+        image_path: imagePath,
+        plan_data: data.rooms,
+        credits_spent: cost,
+        status: "complete",
+      });
+
+      if (resolvedProjectId) {
+        await supabase
+          .from("projects")
+          .update({
+            cover_url: signedUrl || imagePath,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", resolvedProjectId);
+      }
+
+      return { url: signedUrl, creditsLeft: creditsLeft ?? 0, projectId: resolvedProjectId };
+    },
+  );
 
 export const askAssistant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

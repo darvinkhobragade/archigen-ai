@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpRight, Building2, Ruler, Sofa, Wand2, Coins, Sparkles } from "lucide-react";
+import { ArrowUpRight, Building2, Ruler, Sofa, Wand2, Coins, Sparkles, FolderOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/archigen/generator";
 import { tools, creditCosts } from "@/lib/archigen-data";
-import { coverFor, relativeTime, useProjects } from "@/hooks/use-projects";
+import { coverFor, relativeTime, useProjects, useTotalGenerationsCount } from "@/hooks/use-projects";
 import { useProfile } from "@/hooks/use-profile";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -31,6 +31,7 @@ const icons = { Building2, Sofa, Wand2, Ruler } as const;
 function Dashboard() {
   const { data: profile } = useProfile();
   const { data: projects = [] } = useProjects();
+  const { data: totalGenerations = 0 } = useTotalGenerationsCount();
   const firstName = (profile?.full_name || profile?.email || "designer").split(/[\s@]/)[0];
 
   return (
@@ -52,7 +53,7 @@ function Dashboard() {
         {[
           { label: "Credits left", value: String(profile?.credits ?? 0) },
           { label: "Projects", value: String(projects.length) },
-          { label: "Generations", value: "0" },
+          { label: "Generations", value: String(totalGenerations) },
           { label: "Favorites", value: String(projects.filter((p) => p.is_favorite).length) },
         ].map((s) => (
           <div key={s.label} className="surface-panel p-5">
@@ -95,36 +96,56 @@ function Dashboard() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold">Recent projects</h2>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/projects">View all</Link>
+              <Link to="/projects" search={{ tab: "projects" }}>View all</Link>
             </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {projects.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No projects yet —{" "}
-                <Link to="/projects" className="text-primary underline">
+                <Link to="/projects" search={{ tab: "projects" }} className="text-primary underline">
                   create one
                 </Link>
                 .
               </p>
             )}
-            {projects.slice(0, 4).map((p) => (
-              <article key={p.id} className="surface-panel overflow-hidden">
-                <img
-                  src={coverFor(p)}
-                  alt={p.title}
-                  loading="lazy"
-                  className="h-36 w-full object-cover"
-                />
-                <div className="p-4">
-                  <p className="label-caps">{p.type}</p>
-                  <h3 className="mt-1 truncate text-sm font-semibold">{p.title}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    updated {relativeTime(p.updated_at)}
-                  </p>
-                </div>
-              </article>
-            ))}
+            {projects.slice(0, 4).map((p) => {
+              const count = p.generations_count ?? 0;
+              return (
+                <Link
+                  key={p.id}
+                  to="/projects"
+                  search={{ id: p.id, tab: "projects" }}
+                  className="surface-panel overflow-hidden group transition-all hover:border-primary/50 block"
+                >
+                  <div className="relative">
+                    <img
+                      src={coverFor(p)}
+                      alt={p.title}
+                      loading="lazy"
+                      className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                    <Badge
+                      variant="secondary"
+                      className="absolute bottom-2 right-2 bg-background/90 backdrop-blur text-[10px] font-mono"
+                    >
+                      {count === 1 ? "1 item" : `${count} items`}
+                    </Badge>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="label-caps">{p.type}</p>
+                      <span className="text-[10px] text-muted-foreground">
+                        {relativeTime(p.updated_at)}
+                      </span>
+                    </div>
+                    <h3 className="mt-1 truncate text-sm font-semibold group-hover:text-primary transition-colors">
+                      {p.title}
+                    </h3>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </section>
 

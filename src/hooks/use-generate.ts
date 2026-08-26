@@ -22,6 +22,10 @@ export function useGenerateDesign() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -45,10 +49,16 @@ export function useGenerateFloorPlan() {
       plot: string;
       builtUpArea?: string | number | undefined;
       facing?: string | undefined;
+      projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -63,10 +73,16 @@ export function useRender2DColorFloorPlan() {
       bhk: number;
       plot: string;
       stylePreset?: string | undefined;
+      projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -81,10 +97,16 @@ export function useRender3DFloorPlan() {
       bhk: number;
       plot: string;
       stylePreset?: string | undefined;
+      projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
+      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

@@ -23,8 +23,12 @@ import {
   LayoutGrid,
   PenTool,
   FolderOpen,
+  FolderKanban,
+  FolderPlus,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogHeader,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/components/archigen/generator";
 import { PresentationSheet } from "@/components/archigen/presentation-sheet";
 import { CONCEPTUAL_NOTE } from "@/lib/archigen-data";
@@ -48,6 +59,11 @@ import {
 } from "@/hooks/use-generate";
 import { useProfile } from "@/hooks/use-profile";
 import { useDeleteFloorPlan, useFloorPlans, useSaveFloorPlan } from "@/hooks/use-floor-plans";
+import {
+  useProjects,
+  useActiveProject,
+  useCreateProject,
+} from "@/hooks/use-projects";
 import type { PlanRoom } from "@/lib/archigen.functions";
 
 const MATERIAL_PALETTES = [
@@ -425,6 +441,27 @@ function FloorPlanPage() {
   const savePlan = useSaveFloorPlan();
   const deletePlan = useDeleteFloorPlan();
   const { data: savedPlans = [], isLoading: plansLoading } = useFloorPlans();
+  const { data: projects = [] } = useProjects();
+  const { activeProjectId, setActiveProject } = useActiveProject();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => activeProjectId);
+  const [newProjModalOpen, setNewProjModalOpen] = useState(false);
+  const [newProjTitle, setNewProjTitle] = useState("");
+  const createProject = useCreateProject();
+
+  const handleCreateFloorPlanProject = async () => {
+    if (!newProjTitle.trim()) return;
+    const res = await createProject.mutateAsync({
+      title: newProjTitle.trim(),
+      type: "Floor Plan",
+      description: "Floor plan workspace project",
+    });
+    if (res?.id) {
+      setSelectedProjectId(res.id);
+      setActiveProject(res.id);
+      setNewProjTitle("");
+      setNewProjModalOpen(false);
+    }
+  };
 
   const selectedRoom = rooms.find((r) => r.id === selected) ?? null;
   const totalArea = rooms.reduce((sum, r) => sum + r.w * r.h, 0);
@@ -528,9 +565,14 @@ function FloorPlanPage() {
         plot: plotStr,
         builtUpArea: `${builtUpArea} sq ft`,
         facing,
+        projectId: selectedProjectId || undefined,
       },
       {
         onSuccess: (res) => {
+          if (res.projectId && !selectedProjectId) {
+            setSelectedProjectId(res.projectId);
+            setActiveProject(res.projectId);
+          }
           const typedRooms = res.rooms.map((r) => ({
             ...r,
             type: r.type || inferRoomType(r.name),
@@ -544,8 +586,11 @@ function FloorPlanPage() {
           setRender3DResult(null);
           setMobileTab("canvas");
           queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+          queryClient.invalidateQueries({ queryKey: ["projects"] });
+          queryClient.invalidateQueries({ queryKey: ["project-generations"] });
+          queryClient.invalidateQueries({ queryKey: ["all-generations"] });
           toast.success("Floor plan automatically generated as per instructions!", {
-            description: `Generated ${bhk} BHK layout for ${plotStr} plot with ${newTotalArea} sq ft built-up area.`,
+            description: `Generated ${bhk} BHK layout for ${plotStr} plot with ${newTotalArea} sq ft built-up area · saved to project.`,
           });
         },
       },
@@ -556,6 +601,7 @@ function FloorPlanPage() {
     savePlan.mutate(
       {
         id: planId,
+        projectId: selectedProjectId || undefined,
         name: planName.trim() || "Untitled plan",
         rooms,
         settings: {
@@ -569,7 +615,7 @@ function FloorPlanPage() {
       {
         onSuccess: (id) => {
           setPlanId(id);
-          toast.success("Floor plan saved");
+          toast.success("Floor plan saved to project");
         },
       },
     );
@@ -594,13 +640,19 @@ function FloorPlanPage() {
       bhk,
       plot: plotStr,
       stylePreset: combinedStyle,
+      projectId: selectedProjectId || undefined,
     });
     if (res?.url) {
+      if (res.projectId && !selectedProjectId) {
+        setSelectedProjectId(res.projectId);
+        setActiveProject(res.projectId);
+      }
       setRender3DResult(res.url);
-      toast.success("3D Isometric cutaway rendered!");
+      toast.success("3D Isometric cutaway rendered and saved to project!");
       if (planId) {
         savePlan.mutate({
           id: planId,
+          projectId: selectedProjectId || res.projectId || undefined,
           name: planName.trim() || "Untitled plan",
           rooms,
           settings: {
@@ -685,6 +737,65 @@ function FloorPlanPage() {
             Not enough credits ({creditProfile?.credits ?? 0} left).
           </p>
         )}
+
+        {/* Save to Project */}
+        <div className="rounded-lg border border-primary/25 bg-primary/5 p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+              <FolderKanban className="size-3.5 text-primary" /> Save to Project
+            </Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-5 px-1.5 text-[11px] text-primary hover:bg-primary/10 gap-1"
+              onClick={() => setNewProjModalOpen(true)}
+            >
+              <FolderPlus className="size-3" /> New
+            </Button>
+          </div>
+          <Select
+            value={selectedProjectId || "auto"}
+            onValueChange={(val) => {
+              if (val === "auto") {
+                setSelectedProjectId(null);
+                setActiveProject(null);
+              } else {
+                setSelectedProjectId(val);
+                setActiveProject(val);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs bg-background">
+              <SelectValue placeholder="Auto-save to project" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">⚡ Auto-create / Floor Plan Project</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.title} ({p.type})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedProjectId && (
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span className="truncate">
+                Saving to:{" "}
+                <strong className="text-foreground">
+                  {projects.find((p) => p.id === selectedProjectId)?.title ?? "Project"}
+                </strong>
+              </span>
+              <Link
+                to="/projects"
+                search={{ id: selectedProjectId || undefined, tab: "projects" }}
+                className="text-primary hover:underline ml-2 shrink-0 inline-flex items-center gap-0.5"
+              >
+                Open <ArrowUpRight className="size-2.5" />
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* 1. Plot Size (Preset & Dimensions) */}
         <div className="space-y-1.5">
@@ -2397,6 +2508,43 @@ function FloorPlanPage() {
           authorName={creditProfile?.full_name ?? "ArchiGen Studio"}
         />
       )}
+
+      {/* --- CREATE NEW PROJECT MODAL --- */}
+      <Dialog open={newProjModalOpen} onOpenChange={setNewProjModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Floor Plan Project</DialogTitle>
+            <DialogDescription>
+              Create a dedicated workspace project to organize your 2D & 3D floor plan layouts.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="floor-plan-proj-title">Project Title</Label>
+              <Input
+                id="floor-plan-proj-title"
+                value={newProjTitle}
+                onChange={(e) => setNewProjTitle(e.target.value)}
+                placeholder="e.g., Green Valley Villa Plans"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setNewProjModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newProjTitle.trim() || createProject.isPending}
+              onClick={handleCreateFloorPlanProject}
+            >
+              {createProject.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Create & Set Active
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

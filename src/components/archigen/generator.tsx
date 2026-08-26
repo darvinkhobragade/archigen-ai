@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Loader2,
   Sparkles,
@@ -18,8 +18,12 @@ import {
   Layers,
   Ruler,
   FileText,
+  FolderKanban,
+  FolderPlus,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,14 +36,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogHeader,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { PresentationSheet } from "@/components/archigen/presentation-sheet";
 import { CONCEPTUAL_NOTE } from "@/lib/archigen-data";
 import { supabase } from "@/integrations/supabase/client";
 import { useGenerateDesign, useEnhancePrompt } from "@/hooks/use-generate";
 import { useProfile } from "@/hooks/use-profile";
 import { useAppSettings } from "@/hooks/use-app-settings";
-import { Link } from "@tanstack/react-router";
+import {
+  useProjects,
+  useActiveProject,
+  useCreateProject,
+  useAssignGenerationToProject,
+  mapToolToProjectType,
+  type ProjectType,
+} from "@/hooks/use-projects";
 
 export function PageHeader({
   eyebrow,
@@ -93,11 +111,25 @@ export function GeneratorCanvas({
   sourceImage?: string | null;
 }) {
   const { settings: appSettings } = useAppSettings();
+  const { data: projects = [] } = useProjects();
+  const { activeProjectId, setActiveProject } = useActiveProject();
+
+  const targetType = mapToolToProjectType(tool);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => activeProjectId);
+
+  // Sync if activeProjectId changes externally
+  useEffect(() => {
+    if (activeProjectId && projects.some((p) => p.id === activeProjectId)) {
+      setSelectedProjectId(activeProjectId);
+    }
+  }, [activeProjectId, projects]);
+
   const [result, setResult] = useState<{
     id: string;
     url: string;
     prompt?: string;
     seed?: number;
+    projectId?: string | null;
   } | null>(null);
   const [favorite, setFavorite] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<string>("1:1");
@@ -113,10 +145,33 @@ export function GeneratorCanvas({
   const [sliderPos, setSliderPos] = useState(50);
   const [copied, setCopied] = useState(false);
 
+  // Project management modals
+  const [newProjModalOpen, setNewProjModalOpen] = useState(false);
+  const [newProjTitle, setNewProjTitle] = useState("");
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveToProjectId, setMoveToProjectId] = useState<string>("");
+
+  const createProject = useCreateProject();
+  const assignGen = useAssignGenerationToProject();
   const generation = useGenerateDesign();
   const { data: profile } = useProfile();
   const credits = profile?.credits ?? 0;
   const canAfford = credits >= cost;
+
+  const handleCreateInlineProject = async () => {
+    if (!newProjTitle.trim()) return;
+    const res = await createProject.mutateAsync({
+      title: newProjTitle.trim(),
+      type: targetType,
+      description: `Project for ${targetType} designs`,
+    });
+    if (res?.id) {
+      setSelectedProjectId(res.id);
+      setActiveProject(res.id);
+      setNewProjTitle("");
+      setNewProjModalOpen(false);
+    }
+  };
 
   const generate = async () => {
     if (!canAfford) {
@@ -144,17 +199,33 @@ export function GeneratorCanvas({
       lightingMood: request.lightingMood || lightingMood,
       cameraAngle: request.cameraAngle || cameraAngle,
       seed: currentSeed,
+      projectId: selectedProjectId || undefined,
       sourceImage: request.sourceImage ?? sourceImage ?? null,
     });
 
-    setResult({ id: data.id, url: data.url, prompt: request.prompt, seed: data.seed });
+    setResult({
+      id: data.id,
+      url: data.url,
+      prompt: request.prompt,
+      seed: data.seed,
+      projectId: data.projectId ?? selectedProjectId,
+    });
+
+    if (data.projectId && !selectedProjectId) {
+      setSelectedProjectId(data.projectId);
+      setActiveProject(data.projectId);
+    }
+
     if (!lockSeed) {
       setSeedVal(data.seed);
     }
     setFavorite(false);
-    const autoSaveDesc = appSettings.autosave ? " · saved to active project" : "";
+
+    const savedProject = projects.find((p) => p.id === (data.projectId || selectedProjectId));
+    const projectLabel = savedProject ? ` · saved to "${savedProject.title}"` : " · saved to Projects";
+
     toast.success("High-fidelity concept rendered", {
-      description: `${cost} credits used${autoSaveDesc}.`,
+      description: `${cost} credits used${projectLabel}.`,
     });
   };
 
@@ -195,9 +266,78 @@ export function GeneratorCanvas({
             ? "aspect-[3/2]"
             : "aspect-square";
 
+  const currentProject = projects.find(
+    (p) => p.id === (result?.projectId || selectedProjectId),
+  );
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
       <section className="surface-panel space-y-5 p-6">
+        {/* Active Target Project Selector */}
+        <div className="rounded-lg border border-primary/25 bg-primary/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+              <FolderKanban className="size-3.5 text-primary" /> Save to Project
+            </Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-[11px] text-primary hover:bg-primary/10 gap-1"
+              onClick={() => setNewProjModalOpen(true)}
+            >
+              <FolderPlus className="size-3" /> New Project
+            </Button>
+          </div>
+          <Select
+            value={selectedProjectId || "auto"}
+            onValueChange={(val) => {
+              if (val === "auto") {
+                setSelectedProjectId(null);
+                setActiveProject(null);
+              } else {
+                setSelectedProjectId(val);
+                setActiveProject(val);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs bg-background">
+              <SelectValue placeholder="Auto-save to project" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">⚡ Auto-create / Latest {targetType} Project</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.title} ({p.type})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedProjectId ? (
+            <p className="text-[10px] text-muted-foreground flex items-center justify-between">
+              <span className="truncate">
+                Saving to:{" "}
+                <strong className="text-foreground">
+                  {projects.find((p) => p.id === selectedProjectId)?.title ?? "Selected Project"}
+                </strong>
+              </span>
+              <Link
+                to="/projects"
+                search={{ id: selectedProjectId || undefined, tab: "projects" }}
+                className="text-primary hover:underline ml-2 shrink-0 inline-flex items-center gap-0.5 font-medium"
+              >
+                Open <ArrowUpRight className="size-2.5" />
+              </Link>
+            </p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground">
+              {appSettings.autosave
+                ? `Autosave on: renders automatically save into a "${targetType}" project.`
+                : "Concepts will be saved into your workspace projects."}
+            </p>
+          )}
+        </div>
+
         {children}
 
         {/* Precision AI Controls */}
@@ -379,6 +519,45 @@ export function GeneratorCanvas({
       </section>
 
       <section className="surface-panel overflow-hidden flex flex-col">
+        {result && (
+          <div className="flex items-center justify-between gap-2 border-b border-border bg-secondary/30 px-4 py-2 text-xs">
+            <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+              <FolderKanban className="size-3.5 text-primary shrink-0" />
+              <span className="truncate">
+                Saved in:{" "}
+                <strong className="text-foreground">
+                  {currentProject?.title ?? "Workspace Project"}
+                </strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {result.projectId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-primary hover:text-primary gap-1"
+                  asChild
+                >
+                  <Link to="/projects" search={{ id: result.projectId, tab: "projects" }}>
+                    View in Projects <ArrowUpRight className="size-3" />
+                  </Link>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[11px] gap-1"
+                onClick={() => {
+                  setMoveToProjectId(result.projectId || selectedProjectId || "");
+                  setMoveModalOpen(true);
+                }}
+              >
+                Change Project
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 min-h-[380px] grid place-items-center p-4 bg-secondary/20 blueprint-grid">
           <div
             className={`relative w-full max-w-2xl max-h-[560px] overflow-hidden rounded-lg border border-border shadow-sm bg-background ${aspectClass}`}
@@ -526,6 +705,16 @@ export function GeneratorCanvas({
                 <Button variant="ghost" size="sm" onClick={() => setSheetOpen(true)}>
                   <FileText className="size-4" /> Presentation Sheet
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setMoveToProjectId(result.projectId || selectedProjectId || "");
+                    setMoveModalOpen(true);
+                  }}
+                >
+                  <FolderKanban className="size-4" /> Project
+                </Button>
               </>
             )}
 
@@ -581,6 +770,97 @@ export function GeneratorCanvas({
           authorName={profile?.full_name ?? "ArchiGen Studio"}
         />
       )}
+
+      {/* Create New Project Dialog */}
+      <Dialog open={newProjModalOpen} onOpenChange={setNewProjModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Project</DialogTitle>
+            <DialogDescription>
+              Create a new {targetType} project to save and organize your AI concepts.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="inline-proj-title">Project Title</Label>
+              <Input
+                id="inline-proj-title"
+                value={newProjTitle}
+                onChange={(e) => setNewProjTitle(e.target.value)}
+                placeholder={`e.g., Luxury Villa ${targetType}`}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setNewProjModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newProjTitle.trim() || createProject.isPending}
+              onClick={handleCreateInlineProject}
+            >
+              {createProject.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Create & Set Active
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move/Assign Generation Dialog */}
+      <Dialog open={moveModalOpen} onOpenChange={setMoveModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save to Another Project</DialogTitle>
+            <DialogDescription>
+              Select an existing workspace project to organize this concept.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Destination Project</Label>
+              <Select value={moveToProjectId} onValueChange={setMoveToProjectId}>
+                <SelectTrigger className="text-xs">
+                  <SelectValue placeholder="Choose a project..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title} ({p.type})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setMoveModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!moveToProjectId || assignGen.isPending}
+              onClick={async () => {
+                if (!result?.id || !moveToProjectId) return;
+                await assignGen.mutateAsync({
+                  generationId: result.id,
+                  projectId: moveToProjectId,
+                  setAsCover: true,
+                  imageUrl: result.url,
+                });
+                setResult((r) => (r ? { ...r, projectId: moveToProjectId } : null));
+                setSelectedProjectId(moveToProjectId);
+                setActiveProject(moveToProjectId);
+                setMoveModalOpen(false);
+              }}
+            >
+              {assignGen.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Save to Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
