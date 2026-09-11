@@ -1,12 +1,12 @@
-// Server-only helpers for ArchiGen AI generation with multi-engine support.
 import { ASPECT_RATIOS, PROMPT_ENHANCER_SYSTEM } from "./prompts";
+import { ARCHIGEN_WATERMARK_BASE64 } from "./watermark.data";
 
 function getBaseUrl() {
   return process.env["AI_BASE_URL"] || "https://openrouter.ai/api/v1";
 }
 
 export const IMAGE_MODEL = process.env["AI_IMAGE_MODEL"] || "imagen-3.0-generate-002";
-export const TEXT_MODEL = process.env["AI_TEXT_MODEL"] || "gemini-2.0-flash";
+export const TEXT_MODEL = process.env["AI_TEXT_MODEL"] || "gemini-flash-latest";
 
 function getApiKey(): string | null {
   return (
@@ -193,6 +193,58 @@ function createFallbackSvgBytes(
   };
 }
 
+/** Overlays the custom ArchiGen AI badge on the bottom-right corner to cleanly cover any third-party watermark */
+export async function applyArchiGenWatermark(
+  imageBytes: Uint8Array,
+  contentType: string = "image/jpeg",
+): Promise<Uint8Array> {
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default || sharpModule;
+
+    const watermarkBuffer = Buffer.from(ARCHIGEN_WATERMARK_BASE64, "base64");
+    const imgMeta = await sharp(imageBytes).metadata();
+    if (!imgMeta.width || !imgMeta.height) return imageBytes;
+
+    // Scale badge proportionally (covers the bottom-right corner where pollinations places its logo)
+    const badgeWidth = Math.max(220, Math.min(320, Math.round(imgMeta.width * 0.25)));
+
+    const badgeRaw = await sharp(watermarkBuffer)
+      .resize({ width: badgeWidth })
+      .toBuffer();
+
+    const badgeMeta = await sharp(badgeRaw).metadata();
+    if (!badgeMeta.width || !badgeMeta.height) return imageBytes;
+
+    const radius = Math.round(badgeMeta.height * 0.22);
+    const mask = Buffer.from(
+      `<svg width="${badgeMeta.width}" height="${badgeMeta.height}">` +
+      `<rect x="0" y="0" width="${badgeMeta.width}" height="${badgeMeta.height}" rx="${radius}" ry="${radius}" fill="#fff"/>` +
+      `</svg>`
+    );
+
+    const roundedBadge = await sharp(badgeRaw)
+      .composite([{ input: mask, blend: "dest-in" }])
+      .png()
+      .toBuffer();
+
+    // Position at bottom right (8px margin) to cover the pollinations logo completely
+    const margin = 8;
+    const left = imgMeta.width - badgeMeta.width - margin;
+    const top = imgMeta.height - badgeMeta.height - margin;
+
+    const badgedImg = await sharp(imageBytes)
+      .composite([{ input: roundedBadge, top, left }])
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    return new Uint8Array(badgedImg);
+  } catch (err) {
+    console.warn("[ArchiGen AI] Watermark overlay fallback:", err);
+    return imageBytes;
+  }
+}
+
 /** Generates photorealistic architectural render using Pollinations Flux engine with precision dimensions and seed */
 async function fetchPhotorealisticFluxImage(
   prompt: string,
@@ -229,18 +281,49 @@ async function fetchPhotorealisticFluxImage(
   if (res.ok) {
     const buffer = await res.arrayBuffer();
     const contentType = res.headers.get("content-type") || "image/jpeg";
-    return { bytes: new Uint8Array(buffer), contentType, seed: chosenSeed };
+    const watermarkedBytes = await applyArchiGenWatermark(new Uint8Array(buffer), contentType);
+    return { bytes: watermarkedBytes, contentType, seed: chosenSeed };
   }
 
   throw new Error(`Flux generator responded with status ${res.status}`);
 }
 
-/** Native Google Imagen 3 API integration */
+/** Native Google Gemini Image & Imagen 3 API integration */
 async function fetchGoogleImagen3Image(
   prompt: string,
   aspectRatio: string = "1:1",
   apiKey: string,
 ): Promise<{ bytes: Uint8Array; contentType: string; seed: number } | null> {
+  // 1. Try modern Gemini Image generation (gemini-2.5-flash-image)
+  try {
+    const flashEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
+    const res = await fetch(flashEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${prompt}, architectural photography render` }] }],
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          const binary = atob(part.inlineData.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+          const contentType = part.inlineData.mimeType || "image/jpeg";
+          console.info("[ArchiGen AI] Successfully generated concept with Gemini Flash Image.");
+          return { bytes, contentType, seed: Math.floor(Math.random() * 1000000) };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[ArchiGen AI] Gemini Flash Image call failed:", err);
+  }
+
+  // 2. Fallback to Imagen 3 if supported
   try {
     const validRatios: Record<string, string> = {
       "1:1": "1:1",
@@ -303,7 +386,7 @@ export async function analyzeRoomGeometryVision(
     const mimeType =
       imageDataUrl.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/)?.[1] || "image/jpeg";
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`;
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -502,7 +585,7 @@ export async function enhancePrompt(brief: string, tool: string): Promise<string
   // 1. Try Gemini API if key is available
   if (geminiKey) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${geminiKey}`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
