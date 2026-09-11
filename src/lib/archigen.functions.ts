@@ -88,9 +88,10 @@ export const generateDesign = createServerFn({ method: "POST" })
       throw new Error(uploadError.message);
     }
 
-    // Auto-resolve or create project if not provided
-    let resolvedProjectId = data.projectId;
-    if (!resolvedProjectId) {
+    // Auto-resolve or create project if autosave is enabled
+    const isAutosave = String(data.settings?.["autosave"] ?? "true") !== "false";
+    let resolvedProjectId = isAutosave ? (data.projectId ?? null) : null;
+    if (isAutosave && !resolvedProjectId) {
       const projType =
         data.tool === "interior"
           ? "Interior"
@@ -290,9 +291,10 @@ export const generateFloorPlan = createServerFn({ method: "POST" })
         type: r.type || "bedroom",
       }));
 
-      // Resolve or auto-create floor plan project
+      // Resolve or auto-create floor plan project if autosave is enabled
+      const isAutosave = true;
       let resolvedProjectId = data.projectId;
-      if (!resolvedProjectId) {
+      if (!resolvedProjectId && isAutosave) {
         const { data: existingProj } = await supabase
           .from("projects")
           .select("id")

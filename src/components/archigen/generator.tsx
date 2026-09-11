@@ -192,13 +192,14 @@ export function GeneratorCanvas({
       settings: {
         ...request.settings,
         watermark: appSettings.watermark ? "true" : "false",
+        autosave: appSettings.autosave ? "true" : "false",
       },
       stylePreset: request.stylePreset || stylePreset,
       aspectRatio: request.aspectRatio || aspectRatio,
       lightingMood: request.lightingMood || lightingMood,
       cameraAngle: request.cameraAngle || cameraAngle,
       seed: currentSeed,
-      projectId: selectedProjectId || undefined,
+      projectId: appSettings.autosave ? (selectedProjectId || undefined) : undefined,
       sourceImage: request.sourceImage ?? sourceImage ?? null,
     });
 
@@ -207,10 +208,10 @@ export function GeneratorCanvas({
       url: data.url,
       prompt: request.prompt,
       seed: data.seed,
-      projectId: data.projectId ?? selectedProjectId,
+      projectId: data.projectId ?? (appSettings.autosave ? selectedProjectId : null),
     });
 
-    if (data.projectId && !selectedProjectId) {
+    if (appSettings.autosave && data.projectId && !selectedProjectId) {
       setSelectedProjectId(data.projectId);
       setActiveProject(data.projectId);
     }
@@ -220,8 +221,14 @@ export function GeneratorCanvas({
     }
     setFavorite(false);
 
-    const savedProject = projects.find((p) => p.id === (data.projectId || selectedProjectId));
-    const projectLabel = savedProject ? ` · saved to "${savedProject.title}"` : " · saved to Projects";
+    const savedProject = appSettings.autosave && (data.projectId || selectedProjectId)
+      ? projects.find((p) => p.id === (data.projectId || selectedProjectId))
+      : null;
+    const projectLabel = savedProject
+      ? ` · saved to "${savedProject.title}"`
+      : appSettings.autosave
+        ? " · saved to Projects"
+        : " · unassigned (autosave off)";
 
     toast.success("High-fidelity concept rendered", {
       description: `${cost} credits used${projectLabel}.`,
@@ -315,8 +322,8 @@ export function GeneratorCanvas({
           {selectedProjectId ? (
             <p className="text-[10px] text-muted-foreground flex items-center justify-between">
               <span className="truncate">
-                Saving to:{" "}
-                <strong className="text-foreground">
+                {appSettings.autosave ? "Saving to: " : "Active (manual save): "}
+                <strong className="text-foreground font-medium">
                   {projects.find((p) => p.id === selectedProjectId)?.title ?? "Selected Project"}
                 </strong>
               </span>
@@ -332,7 +339,7 @@ export function GeneratorCanvas({
             <p className="text-[10px] text-muted-foreground">
               {appSettings.autosave
                 ? `Autosave on: renders automatically save into a "${targetType}" project.`
-                : "Concepts will be saved into your workspace projects."}
+                : "Autosave off: renders will remain unassigned until manually saved."}
             </p>
           )}
         </div>
@@ -704,7 +711,7 @@ export function GeneratorCanvas({
                     setMoveModalOpen(true);
                   }}
                 >
-                  <FolderKanban className="size-4" /> Project
+                  <FolderKanban className="size-4" /> {result.projectId ? "Project" : "Save to Project"}
                 </Button>
               </>
             )}
