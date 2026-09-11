@@ -621,21 +621,12 @@ export function GeneratorCanvas({
                     className="size-full object-cover contrast-[1.03] saturate-[1.02]"
                   />
                   {appSettings.watermark && (
-                    <>
-                      <div className="absolute top-3 left-3 z-10 pointer-events-none">
-                        <div className="flex items-center gap-1.5 rounded bg-black/75 backdrop-blur px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/95 border border-white/10 shadow-md">
-                          <Ruler className="size-3 text-primary" />
-                          <span>ArchiGen AI · Conceptual</span>
-                        </div>
+                    <div className="absolute top-3 left-3 z-10 pointer-events-none">
+                      <div className="flex items-center gap-1.5 rounded bg-black/75 backdrop-blur px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/95 border border-white/10 shadow-md">
+                        <Ruler className="size-3 text-primary" />
+                        <span>ArchiGen AI · Conceptual</span>
                       </div>
-                      <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
-                        <img
-                          src="/archigen-watermark.png"
-                          alt="ArchiGen AI"
-                          className="h-6 sm:h-7 w-auto rounded-md shadow-xl border border-white/15"
-                        />
-                      </div>
-                    </>
+                    </div>
                   )}
                   <Button
                     variant="secondary"
