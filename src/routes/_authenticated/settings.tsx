@@ -30,17 +30,12 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 type SettingRow = {
-  id: "watermark" | "autosave";
+  id: "autosave";
   label: string;
   hint: string;
 };
 
 const generationDefaults: SettingRow[] = [
-  {
-    id: "watermark",
-    label: "Add conceptual watermark",
-    hint: "Recommended for shared links.",
-  },
   {
     id: "autosave",
     label: "Auto-save every generation",

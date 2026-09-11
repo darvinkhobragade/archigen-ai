@@ -16,7 +16,6 @@ import {
   Unlock,
   Shuffle,
   Layers,
-  Ruler,
   FileText,
   FolderKanban,
   FolderPlus,
@@ -620,14 +619,6 @@ export function GeneratorCanvas({
                     loading="lazy"
                     className="size-full object-cover contrast-[1.03] saturate-[1.02]"
                   />
-                  {appSettings.watermark && (
-                    <div className="absolute top-3 left-3 z-10 pointer-events-none">
-                      <div className="flex items-center gap-1.5 rounded bg-black/75 backdrop-blur px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/95 border border-white/10 shadow-md">
-                        <Ruler className="size-3 text-primary" />
-                        <span>ArchiGen AI · Conceptual</span>
-                      </div>
-                    </div>
-                  )}
                   <Button
                     variant="secondary"
                     size="icon"

@@ -7,7 +7,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  watermark: true,
+  watermark: false,
   autosave: true,
   lowCreditAlerts: true,
 };
