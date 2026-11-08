@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { PlanRoom } from "@/lib/archigen.functions";
+import type { PlanRoom } from "@/lib/types/generation";
 import { QK } from "@/lib/query-keys";
 
 export type SavedPlan = {

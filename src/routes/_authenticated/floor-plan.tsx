@@ -64,7 +64,7 @@ import {
   useActiveProject,
   useCreateProject,
 } from "@/hooks/use-projects";
-import type { PlanRoom } from "@/lib/archigen.functions";
+import type { PlanRoom } from "@/lib/types/generation";
 import { QK } from "@/lib/query-keys";
 
 const MATERIAL_PALETTES = [

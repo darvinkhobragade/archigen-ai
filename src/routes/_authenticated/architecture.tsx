@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { z } from "zod";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,16 @@ export const Route = createFileRoute("/_authenticated/architecture")({
   component: ArchitecturePage,
 });
 
+const architectureSchema = z.object({
+  brief: z.string().trim().min(8, "Add a short design brief first (at least 8 characters)."),
+  buildingType: z.string().min(1, "Please select a building type."),
+  style: z.string().min(1, "Please select an architectural style."),
+  plot: z.string().trim().min(2, "Please enter plot dimensions (e.g. 30 x 50 ft)."),
+  floors: z.string().trim().min(1, "Please enter number of floors."),
+  materials: z.string().trim().min(2, "Please specify primary building materials."),
+  greenery: z.number().min(0).max(100),
+});
+
 function ArchitecturePage() {
   const [brief, setBrief] = useState("");
   const [buildingType, setBuildingType] = useState("residential");
@@ -53,21 +64,31 @@ function ArchitecturePage() {
         tool="architecture"
         cost={4}
         previewAlt="Generated house exterior concept"
-        buildRequest={() =>
-          brief.trim().length < 8
-            ? "Add a short design brief first (at least a sentence)."
-            : {
-                prompt: brief.trim(),
-                settings: {
-                  building_type: buildingType,
-                  style,
-                  plot_size: plot,
-                  floors,
-                  materials,
-                  greenery: `${greenery[0]}%`,
-                },
-              }
-        }
+        buildRequest={() => {
+          const validation = architectureSchema.safeParse({
+            brief,
+            buildingType,
+            style,
+            plot,
+            floors,
+            materials,
+            greenery: greenery[0] ?? 50,
+          });
+          if (!validation.success) {
+            return validation.error.errors[0]?.message ?? "Please check your inputs.";
+          }
+          return {
+            prompt: brief.trim(),
+            settings: {
+              building_type: buildingType,
+              style,
+              plot_size: plot.trim(),
+              floors: floors.trim(),
+              materials: materials.trim(),
+              greenery: `${greenery[0]}%`,
+            },
+          };
+        }}
       >
         <div className="space-y-2">
           <div className="flex items-center justify-between">

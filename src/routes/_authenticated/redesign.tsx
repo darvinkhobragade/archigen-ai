@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -29,6 +30,16 @@ export const Route = createFileRoute("/_authenticated/redesign")({
     ],
   }),
   component: RedesignPage,
+});
+
+const redesignSchema = z.object({
+  hasPhoto: z.boolean().refine((val) => val, {
+    message: "Upload a room photo first.",
+  }),
+  roomType: z.string().min(1, "Please select a room type."),
+  style: z.string().min(1, "Please select a target style."),
+  strength: z.number().min(0).max(100),
+  keep: z.string().max(500, "Elements to keep must be under 500 characters."),
 });
 
 function RedesignPage() {
@@ -64,22 +75,31 @@ function RedesignPage() {
         cost={3}
         previewAlt="Redesigned room concept"
         sourceImage={photo ? photo.dataUrl : null}
-        buildRequest={() =>
-          !photo
-            ? "Upload a room photo first."
-            : {
-                prompt: `Restyle this ${roomType} in a ${style} style at ${strength[0]}% transformation strength.${
-                  keep.trim() ? ` Keep unchanged: ${keep.trim()}.` : ""
-                }`,
-                settings: {
-                  room_type: roomType,
-                  target_style: style,
-                  strength: `${strength[0]}%`,
-                  keep_unchanged: keep,
-                },
-                sourceImage: photo.dataUrl,
-              }
-        }
+        buildRequest={() => {
+          const validation = redesignSchema.safeParse({
+            hasPhoto: Boolean(photo),
+            roomType,
+            style,
+            strength: strength[0] ?? 55,
+            keep,
+          });
+          if (!validation.success) {
+            return validation.error.errors[0]?.message ?? "Please check your inputs.";
+          }
+          if (!photo) return "Upload a room photo first.";
+          return {
+            prompt: `Restyle this ${roomType} in a ${style} style at ${strength[0]}% transformation strength.${
+              keep.trim() ? ` Keep unchanged: ${keep.trim()}.` : ""
+            }`,
+            settings: {
+              room_type: roomType,
+              target_style: style,
+              strength: `${strength[0]}%`,
+              keep_unchanged: keep.trim(),
+            },
+            sourceImage: photo.dataUrl,
+          };
+        }}
       >
         <div className="space-y-2">
           <Label htmlFor="photo">Room photo</Label>

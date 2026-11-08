@@ -191,7 +191,6 @@ export function GeneratorCanvas({
       prompt: request.prompt,
       settings: {
         ...request.settings,
-        watermark: appSettings.watermark ? "true" : "false",
         autosave: appSettings.autosave ? "true" : "false",
       },
       stylePreset: request.stylePreset || stylePreset,

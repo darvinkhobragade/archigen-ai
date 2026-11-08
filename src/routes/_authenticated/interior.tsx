@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { z } from "zod";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,15 @@ export const Route = createFileRoute("/_authenticated/interior")({
   component: InteriorPage,
 });
 
+const interiorSchema = z.object({
+  room: z.string().min(1, "Please select a room type."),
+  style: z.string().min(1, "Please select an interior style."),
+  palette: z.string().trim().min(2, "Please enter a material/color palette (at least 2 characters)."),
+  lighting: z.string().min(1, "Please select a lighting mood."),
+  notes: z.string().max(1000, "Extra requirements must be under 1000 characters."),
+  budget: z.number().min(0).max(100),
+});
+
 const roomLabels: Record<string, string> = {
   living: "living room",
   bedroom: "bedroom",
@@ -59,16 +69,29 @@ function InteriorPage() {
         tool="interior"
         cost={3}
         previewAlt="Generated interior concept"
-        buildRequest={() => ({
-          prompt: `A ${style.replace("-", " ")} ${roomLabels[room] ?? room}. ${notes.trim()}`,
-          settings: {
-            room_type: room,
+        buildRequest={() => {
+          const validation = interiorSchema.safeParse({
+            room,
             style,
             palette,
             lighting,
-            budget_level: `${budget[0]}/100`,
-          },
-        })}
+            notes,
+            budget: budget[0] ?? 40,
+          });
+          if (!validation.success) {
+            return validation.error.errors[0]?.message ?? "Please check your inputs.";
+          }
+          return {
+            prompt: `A ${style.replace("-", " ")} ${roomLabels[room] ?? room}. ${notes.trim()}`,
+            settings: {
+              room_type: room,
+              style,
+              palette: palette.trim(),
+              lighting,
+              budget_level: `${budget[0]}/100`,
+            },
+          };
+        }}
       >
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">

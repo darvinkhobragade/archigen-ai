@@ -9,9 +9,8 @@ import {
   generateFloorPlan,
   render2DColorFloorPlan,
   render3DFloorPlan,
-  type GenerateInput,
-  type PlanRoom,
 } from "@/lib/archigen.functions";
+import type { GenerateInput, PlanRoom } from "@/lib/types/generation";
 import { QK } from "@/lib/query-keys";
 
 /** Invalidates all generation-related caches after a successful generation */

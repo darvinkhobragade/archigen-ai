@@ -1,5 +1,5 @@
 import { ASPECT_RATIOS, PROMPT_ENHANCER_SYSTEM } from "./prompts";
-import { ARCHIGEN_WATERMARK_BASE64 } from "./watermark.data";
+import { generateSmartFloorPlanJSON } from "./floor-plan-generator";
 
 function getBaseUrl() {
   return process.env["AI_BASE_URL"] || "https://openrouter.ai/api/v1";
@@ -20,6 +20,17 @@ function getApiKey(): string | null {
 
 function getGeminiKey(): string | null {
   return process.env["GEMINI_API_KEY"] || process.env["AI_API_KEY"] || null;
+}
+
+export function getActiveAiProvider(): {
+  provider: "gemini" | "openrouter" | "flux";
+  hasGeminiKey: boolean;
+  hasOpenRouterKey: boolean;
+} {
+  const geminiKey = Boolean(getGeminiKey());
+  const standardKey = Boolean(getApiKey());
+  const provider = geminiKey ? "gemini" : standardKey ? "openrouter" : "flux";
+  return { provider, hasGeminiKey: geminiKey, hasOpenRouterKey: standardKey };
 }
 
 interface ImagenResponse {
@@ -61,7 +72,7 @@ interface OpenRouterChatResponse {
 function createFallbackSvgBytes(
   prompt: string,
   tool: string = "architecture",
-  watermark: boolean = true,
+  watermark: boolean = false,
 ): { bytes: Uint8Array; contentType: string; seed: number } {
   const title = prompt.slice(0, 75) + (prompt.length > 75 ? "…" : "");
   const isInterior = tool === "interior";
@@ -169,17 +180,6 @@ function createFallbackSvgBytes(
     `
     }
 
-    ${
-      watermark
-        ? `
-    <!-- Watermark / HUD Badge -->
-    <rect x="40" y="40" width="380" height="64" rx="8" fill="#0f172a" opacity="0.85" stroke="#334155" stroke-width="1.5"/>
-    <text x="60" y="70" fill="#f8fafc" font-family="sans-serif" font-size="18" font-weight="600">ArchiGen AI Concept Render</text>
-    <text x="60" y="92" fill="${accentColor}" font-family="sans-serif" font-size="12" font-weight="500">${tool.toUpperCase()} MODE</text>
-    `
-        : ""
-    }
-
     <!-- Prompt Caption Footer -->
     <rect x="40" y="810" width="1120" height="50" rx="8" fill="#0f172a" opacity="0.9" stroke="#334155" stroke-width="1"/>
     <text x="60" y="842" fill="#cbd5e1" font-family="sans-serif" font-size="14">${title}</text>
@@ -191,58 +191,6 @@ function createFallbackSvgBytes(
     contentType: "image/svg+xml",
     seed: 42,
   };
-}
-
-/** Overlays the custom ArchiGen AI badge on the bottom-right corner to cleanly cover any third-party watermark */
-export async function applyArchiGenWatermark(
-  imageBytes: Uint8Array,
-  contentType: string = "image/jpeg",
-): Promise<Uint8Array> {
-  try {
-    const sharpModule = await import("sharp");
-    const sharp = sharpModule.default || sharpModule;
-
-    const watermarkBuffer = Buffer.from(ARCHIGEN_WATERMARK_BASE64, "base64");
-    const imgMeta = await sharp(imageBytes).metadata();
-    if (!imgMeta.width || !imgMeta.height) return imageBytes;
-
-    // Scale badge proportionally (covers the bottom-right corner where pollinations places its logo)
-    const badgeWidth = Math.max(220, Math.min(320, Math.round(imgMeta.width * 0.25)));
-
-    const badgeRaw = await sharp(watermarkBuffer)
-      .resize({ width: badgeWidth })
-      .toBuffer();
-
-    const badgeMeta = await sharp(badgeRaw).metadata();
-    if (!badgeMeta.width || !badgeMeta.height) return imageBytes;
-
-    const radius = Math.round(badgeMeta.height * 0.22);
-    const mask = Buffer.from(
-      `<svg width="${badgeMeta.width}" height="${badgeMeta.height}">` +
-      `<rect x="0" y="0" width="${badgeMeta.width}" height="${badgeMeta.height}" rx="${radius}" ry="${radius}" fill="#fff"/>` +
-      `</svg>`
-    );
-
-    const roundedBadge = await sharp(badgeRaw)
-      .composite([{ input: mask, blend: "dest-in" }])
-      .png()
-      .toBuffer();
-
-    // Position at bottom right (8px margin) to cover the pollinations logo completely
-    const margin = 8;
-    const left = imgMeta.width - badgeMeta.width - margin;
-    const top = imgMeta.height - badgeMeta.height - margin;
-
-    const badgedImg = await sharp(imageBytes)
-      .composite([{ input: roundedBadge, top, left }])
-      .jpeg({ quality: 95 })
-      .toBuffer();
-
-    return new Uint8Array(badgedImg);
-  } catch (err) {
-    console.warn("[ArchiGen AI] Watermark overlay fallback:", err);
-    return imageBytes;
-  }
 }
 
 /** Generates photorealistic architectural render using Pollinations Flux engine with precision dimensions and seed */
@@ -281,8 +229,7 @@ async function fetchPhotorealisticFluxImage(
   if (res.ok) {
     const buffer = await res.arrayBuffer();
     const contentType = res.headers.get("content-type") || "image/jpeg";
-    const watermarkedBytes = await applyArchiGenWatermark(new Uint8Array(buffer), contentType);
-    return { bytes: watermarkedBytes, contentType, seed: chosenSeed };
+    return { bytes: new Uint8Array(buffer), contentType, seed: chosenSeed };
   }
 
   throw new Error(`Flux generator responded with status ${res.status}`);
@@ -431,7 +378,7 @@ export async function generateImageBytes(
   aspectRatio: string = "1:1",
   seed?: number,
   isHires: boolean = false,
-  watermark: boolean = true,
+  watermark: boolean = false,
 ): Promise<{ bytes: Uint8Array; contentType: string; seed: number }> {
   const geminiKey = getGeminiKey();
   let finalPrompt = prompt;
@@ -613,330 +560,9 @@ export async function enhancePrompt(brief: string, tool: string): Promise<string
   return enhanceArchitecturalPromptLocally(brief, tool);
 }
 
-function generateSmartFloorPlanJSON(userContent: string): string {
-  const bhkMatch = userContent.match(/(\d+)\s*BHK/i);
-  const bhk = bhkMatch && bhkMatch[1] ? parseInt(bhkMatch[1], 10) : 2;
+// Re-export floor plan generation logic from modular service
+export { generateSmartFloorPlanJSON };
 
-  const hasPooja = /pooja|mandir|prayer/i.test(userContent);
-  const hasBalcony = /balcony|terrace|sitout/i.test(userContent);
-
-  // Parse plot dimensions if mentioned e.g. "30 x 40", "30x50", "40 x 60"
-  const plotMatch = userContent.match(/(\d+)\s*[xX*×]\s*(\d+)/);
-  const plotW =
-    plotMatch && plotMatch[1] ? Math.max(20, Math.min(60, parseInt(plotMatch[1], 10))) : 30;
-  const plotH =
-    plotMatch && plotMatch[2] ? Math.max(20, Math.min(60, parseInt(plotMatch[2], 10))) : 40;
-
-  type RoomItem = {
-    id: string;
-    name: string;
-    type:
-      | "living"
-      | "master_bedroom"
-      | "bedroom"
-      | "kitchen"
-      | "dining"
-      | "bathroom"
-      | "balcony"
-      | "pooja"
-      | "foyer"
-      | "utility";
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  };
-
-  const rooms: RoomItem[] = [];
-
-  if (bhk === 1) {
-    // 1 BHK Layout - ~24x26 ft space plan
-    const midX = Math.round(plotW * 0.55);
-    const midY = Math.round(plotH * 0.55);
-    rooms.push(
-      { id: "r1", name: "Living Room", type: "living", x: 0, y: 0, w: midX, h: midY },
-      {
-        id: "r2",
-        name: "Master Bedroom",
-        type: "master_bedroom",
-        x: midX,
-        y: 0,
-        w: plotW - midX,
-        h: midY,
-      },
-      {
-        id: "r3",
-        name: "Modular Kitchen",
-        type: "kitchen",
-        x: 0,
-        y: midY,
-        w: Math.round(midX * 0.7),
-        h: plotH - midY,
-      },
-      {
-        id: "r4",
-        name: "Bathroom",
-        type: "bathroom",
-        x: Math.round(midX * 0.7),
-        y: midY,
-        w: midX - Math.round(midX * 0.7),
-        h: plotH - midY,
-      },
-      {
-        id: "r5",
-        name: "Sitout Balcony",
-        type: "balcony",
-        x: midX,
-        y: midY,
-        w: plotW - midX,
-        h: plotH - midY,
-      },
-    );
-  } else if (bhk === 3) {
-    // 3 BHK Vastu Layout - ~30x45 ft space plan
-    const col1W = Math.round(plotW * 0.38);
-    const col2W = Math.round(plotW * 0.34);
-    const col3W = plotW - col1W - col2W;
-
-    const row1H = Math.round(plotH * 0.38);
-    const row2H = Math.round(plotH * 0.34);
-    const row3H = plotH - row1H - row2H;
-
-    rooms.push(
-      // North / North-East: Grand Living & Foyer
-      { id: "r1", name: "Living & Foyer", type: "living", x: 0, y: 0, w: col1W + col2W, h: row1H },
-      // North-East / East: Dining & Pooja
-      {
-        id: "r2",
-        name: hasPooja ? "Dining & Pooja" : "Dining Room",
-        type: hasPooja ? "pooja" : "dining",
-        x: col1W + col2W,
-        y: 0,
-        w: col3W,
-        h: row1H,
-      },
-      // South-East (Agneya): Modular Kitchen & Utility
-      {
-        id: "r3",
-        name: "Modular Kitchen",
-        type: "kitchen",
-        x: col1W + col2W,
-        y: row1H,
-        w: col3W,
-        h: row2H,
-      },
-      {
-        id: "r4",
-        name: "Kitchen Utility",
-        type: "utility",
-        x: col1W + col2W,
-        y: row1H + row2H,
-        w: col3W,
-        h: row3H,
-      },
-      // South-West (Nairutya): Master Suite
-      {
-        id: "r5",
-        name: "Master Suite",
-        type: "master_bedroom",
-        x: 0,
-        y: row1H,
-        w: col1W,
-        h: row2H + row3H,
-      },
-      // West: Master Attached Bath
-      {
-        id: "r6",
-        name: "Master Bath",
-        type: "bathroom",
-        x: col1W,
-        y: row1H,
-        w: col2W,
-        h: Math.round(row2H * 0.5),
-      },
-      // North-West: Bedroom 2
-      {
-        id: "r7",
-        name: "Bedroom 2",
-        type: "bedroom",
-        x: col1W,
-        y: row1H + Math.round(row2H * 0.5),
-        w: col2W,
-        h: row2H - Math.round(row2H * 0.5),
-      },
-      // South: Bedroom 3
-      {
-        id: "r8",
-        name: "Bedroom 3 (Kids)",
-        type: "bedroom",
-        x: col1W,
-        y: row1H + row2H,
-        w: Math.round(col2W * 0.65),
-        h: row3H,
-      },
-      // Common Bathroom
-      {
-        id: "r9",
-        name: "Common Bath",
-        type: "bathroom",
-        x: col1W + Math.round(col2W * 0.65),
-        y: row1H + row2H,
-        w: col2W - Math.round(col2W * 0.65),
-        h: row3H,
-      },
-    );
-  } else if (bhk >= 4) {
-    // 4 BHK Luxury Layout
-    const col1W = Math.round(plotW * 0.35);
-    const col2W = Math.round(plotW * 0.35);
-    const col3W = plotW - col1W - col2W;
-
-    const row1H = Math.round(plotH * 0.35);
-    const row2H = Math.round(plotH * 0.35);
-    const row3H = plotH - row1H - row2H;
-
-    rooms.push(
-      { id: "r1", name: "Formal Living", type: "living", x: 0, y: 0, w: col1W + col2W, h: row1H },
-      { id: "r2", name: "Dining Hall", type: "dining", x: col1W + col2W, y: 0, w: col3W, h: row1H },
-      {
-        id: "r3",
-        name: "Chef Kitchen",
-        type: "kitchen",
-        x: col1W + col2W,
-        y: row1H,
-        w: col3W,
-        h: row2H,
-      },
-      {
-        id: "r4",
-        name: "Utility & Store",
-        type: "utility",
-        x: col1W + col2W,
-        y: row1H + row2H,
-        w: col3W,
-        h: row3H,
-      },
-      {
-        id: "r5",
-        name: "Master Suite",
-        type: "master_bedroom",
-        x: 0,
-        y: row1H,
-        w: col1W,
-        h: row2H,
-      },
-      {
-        id: "r6",
-        name: "Master Bath",
-        type: "bathroom",
-        x: col1W,
-        y: row1H,
-        w: col2W,
-        h: Math.round(row2H * 0.5),
-      },
-      {
-        id: "r7",
-        name: "Bedroom 2 (Guest)",
-        type: "bedroom",
-        x: col1W,
-        y: row1H + Math.round(row2H * 0.5),
-        w: col2W,
-        h: row2H - Math.round(row2H * 0.5),
-      },
-      { id: "r8", name: "Bedroom 3", type: "bedroom", x: 0, y: row1H + row2H, w: col1W, h: row3H },
-      {
-        id: "r9",
-        name: "Bedroom 4 (Study)",
-        type: "bedroom",
-        x: col1W,
-        y: row1H + row2H,
-        w: Math.round(col2W * 0.65),
-        h: row3H,
-      },
-      {
-        id: "r10",
-        name: "Common Bath",
-        type: "bathroom",
-        x: col1W + Math.round(col2W * 0.65),
-        y: row1H + row2H,
-        w: col2W - Math.round(col2W * 0.65),
-        h: row3H,
-      },
-    );
-  } else {
-    // 2 BHK Vastu Space Plan (Standard 30x40 ft)
-    const midX = Math.round(plotW * 0.52);
-    const rightW = plotW - midX;
-    const topH = Math.round(plotH * 0.45);
-    const bottomH = plotH - topH;
-
-    const bathW = Math.round(rightW * 0.45);
-    const kitchenW = rightW - bathW;
-
-    rooms.push(
-      // North: Living & Dining
-      { id: "r1", name: "Living & Dining", type: "living", x: 0, y: 0, w: midX, h: topH },
-      // North-East / East: Modular Kitchen (SE Corner)
-      { id: "r2", name: "Modular Kitchen", type: "kitchen", x: midX, y: 0, w: kitchenW, h: topH },
-      // East: Attached Utility
-      { id: "r3", name: "Utility", type: "utility", x: midX + kitchenW, y: 0, w: bathW, h: topH },
-      // South-West: Master Bedroom
-      {
-        id: "r4",
-        name: "Master Bedroom",
-        type: "master_bedroom",
-        x: 0,
-        y: topH,
-        w: Math.round(midX * 0.68),
-        h: bottomH,
-      },
-      // West: Master Attached Bath
-      {
-        id: "r5",
-        name: "Master Bath",
-        type: "bathroom",
-        x: Math.round(midX * 0.68),
-        y: topH,
-        w: midX - Math.round(midX * 0.68),
-        h: Math.round(bottomH * 0.55),
-      },
-      // North-West: Common Bath
-      {
-        id: "r6",
-        name: "Common Bath",
-        type: "bathroom",
-        x: Math.round(midX * 0.68),
-        y: topH + Math.round(bottomH * 0.55),
-        w: midX - Math.round(midX * 0.68),
-        h: bottomH - Math.round(bottomH * 0.55),
-      },
-      // South-East: Bedroom 2
-      {
-        id: "r7",
-        name: "Bedroom 2",
-        type: "bedroom",
-        x: midX,
-        y: topH,
-        w: rightW,
-        h: hasBalcony ? Math.round(bottomH * 0.72) : bottomH,
-      },
-    );
-
-    if (hasBalcony) {
-      rooms.push({
-        id: "r8",
-        name: "Sitout Balcony",
-        type: "balcony",
-        x: midX,
-        y: topH + Math.round(bottomH * 0.72),
-        w: rightW,
-        h: bottomH - Math.round(bottomH * 0.72),
-      });
-    }
-  }
-
-  return JSON.stringify({ rooms });
-}
 
 /**
  * Resilient multi-model Gemini generateContent caller with turn sanitization, timeout, and temperature tuning.
@@ -1142,7 +768,7 @@ export async function chatCompletion(
         ? conversation
         : [{ role: "user", parts: [{ text: lastUserMessage || "Hello" }] }],
       {
-        json: options?.json,
+        ...(options?.json !== undefined ? { json: options.json } : {}),
         temperature: options?.json ? 0.2 : 0.3,
         timeoutMs: 18000,
       },
