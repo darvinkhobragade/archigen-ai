@@ -277,6 +277,12 @@ npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+### 6. Run Unit Tests
+```bash
+npm test
+```
+Executes Vitest suite verifying query keys, relative time formatting, and data layer models.
+
 ---
 
 ## 🌐 Production Deployment

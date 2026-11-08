@@ -1,5 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
@@ -13,20 +12,29 @@ import {
   type GenerateInput,
   type PlanRoom,
 } from "@/lib/archigen.functions";
+import { QK } from "@/lib/query-keys";
+
+/** Invalidates all generation-related caches after a successful generation */
+function useInvalidateAfterGeneration() {
+  const queryClient = useQueryClient();
+  return () => {
+    // Force fresh profile fetch (fixes multi-tab credit race condition)
+    queryClient.invalidateQueries({ queryKey: QK.profile() });
+    queryClient.refetchQueries({ queryKey: QK.profile() });
+    queryClient.invalidateQueries({ queryKey: QK.creditHistory() });
+    queryClient.invalidateQueries({ queryKey: QK.projects() });
+    queryClient.invalidateQueries({ queryKey: QK.projectGenerations() });
+    queryClient.invalidateQueries({ queryKey: QK.allGenerations() });
+    queryClient.invalidateQueries({ queryKey: QK.totalGenerationsCount() });
+  };
+}
 
 export function useGenerateDesign() {
-  const queryClient = useQueryClient();
   const run = useServerFn(generateDesign);
+  const invalidate = useInvalidateAfterGeneration();
   return useMutation({
     mutationFn: (input: GenerateInput) => run({ data: input }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
-    },
+    onSuccess: invalidate,
     onError: (e: Error) => toast.error(e.message),
   });
 }
@@ -42,6 +50,7 @@ export function useEnhancePrompt() {
 export function useGenerateFloorPlan() {
   const queryClient = useQueryClient();
   const run = useServerFn(generateFloorPlan);
+  const invalidate = useInvalidateAfterGeneration();
   return useMutation({
     mutationFn: (input: {
       brief: string;
@@ -52,13 +61,8 @@ export function useGenerateFloorPlan() {
       projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
-      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -67,6 +71,7 @@ export function useGenerateFloorPlan() {
 export function useRender2DColorFloorPlan() {
   const queryClient = useQueryClient();
   const run = useServerFn(render2DColorFloorPlan);
+  const invalidate = useInvalidateAfterGeneration();
   return useMutation({
     mutationFn: (input: {
       rooms: PlanRoom[];
@@ -76,13 +81,8 @@ export function useRender2DColorFloorPlan() {
       projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
-      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -91,6 +91,7 @@ export function useRender2DColorFloorPlan() {
 export function useRender3DFloorPlan() {
   const queryClient = useQueryClient();
   const run = useServerFn(render3DFloorPlan);
+  const invalidate = useInvalidateAfterGeneration();
   return useMutation({
     mutationFn: (input: {
       rooms: PlanRoom[];
@@ -100,13 +101,8 @@ export function useRender3DFloorPlan() {
       projectId?: string | null | undefined;
     }) => run({ data: input }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
-      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -119,8 +115,10 @@ export function useAskAssistant() {
     mutationFn: (messages: { role: "user" | "assistant"; content: string }[]) =>
       run({ data: { messages } }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      // Force a fresh fetch (not just staleness invalidation) to fix multi-tab credit sync
+      queryClient.invalidateQueries({ queryKey: QK.profile() });
+      queryClient.refetchQueries({ queryKey: QK.profile() });
+      queryClient.invalidateQueries({ queryKey: QK.creditHistory() });
     },
     onError: (e: Error) => toast.error(e.message),
   });

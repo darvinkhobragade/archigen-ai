@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { createPaymentOrder, verifyPaymentSignature } from "@/lib/archigen.functions";
+import { QK } from "@/lib/query-keys";
 
 export type CreditTransaction = {
   id: string;
@@ -14,7 +15,7 @@ export type CreditTransaction = {
 
 export function useCreditHistory(limit = 50) {
   return useQuery({
-    queryKey: ["credit-history", limit],
+    queryKey: QK.creditHistory(limit),
     queryFn: async (): Promise<CreditTransaction[]> => {
       const { data, error } = await supabase
         .from("credit_transactions")
@@ -49,8 +50,10 @@ export function useVerifyPayment() {
       packTitle: string;
     }) => run({ data: input }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["credit-history"] });
+      // Force a fresh profile fetch to reflect the newly added credits immediately
+      queryClient.invalidateQueries({ queryKey: QK.profile() });
+      queryClient.refetchQueries({ queryKey: QK.profile() });
+      queryClient.invalidateQueries({ queryKey: QK.creditHistory() });
     },
     onError: (e: Error) => toast.error(e.message),
   });

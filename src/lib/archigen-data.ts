@@ -49,55 +49,6 @@ export const tools: Tool[] = [
   },
 ];
 
-export type Project = {
-  id: string;
-  title: string;
-  type: "Architecture" | "Interior" | "Redesign" | "Floor Plan";
-  updated: string;
-  assets: number;
-  favorite: boolean;
-  cover: string;
-};
-
-export const projects: Project[] = [
-  {
-    id: "p1",
-    title: "Coastal Villa — Alibaug",
-    type: "Architecture",
-    updated: "2 hours ago",
-    assets: 12,
-    favorite: true,
-    cover: heroVilla,
-  },
-  {
-    id: "p2",
-    title: "Warm Minimal Living Room",
-    type: "Interior",
-    updated: "Yesterday",
-    assets: 8,
-    favorite: true,
-    cover: sampleInterior,
-  },
-  {
-    id: "p3",
-    title: "3 BHK — 30x50 Plot",
-    type: "Floor Plan",
-    updated: "3 days ago",
-    assets: 4,
-    favorite: false,
-    cover: samplePlan,
-  },
-  {
-    id: "p4",
-    title: "Urban Brick Facade",
-    type: "Redesign",
-    updated: "Last week",
-    assets: 6,
-    favorite: false,
-    cover: sampleExterior,
-  },
-];
-
 export const plans = [
   {
     name: "Starter",

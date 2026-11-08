@@ -17,7 +17,14 @@ import {
   useVerifyPayment,
 } from "@/hooks/use-credits";
 
+export type PricingSearch = {
+  plan?: string | undefined;
+};
+
 export const Route = createFileRoute("/_authenticated/pricing")({
+  validateSearch: (search: Record<string, unknown>): PricingSearch => ({
+    plan: typeof search["plan"] === "string" ? (search["plan"] as string) : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Credits & Plans — ArchiGen AI" },
@@ -70,6 +77,7 @@ function loadRazorpayScript() {
 }
 
 function PricingPage() {
+  const { plan: selectedPlan } = Route.useSearch();
   const { data: profile } = useProfile();
   const { data: history, isLoading: historyLoading } = useCreditHistory();
   const createOrder = useCreatePaymentOrder();
@@ -206,14 +214,20 @@ function PricingPage() {
         {plans.map((p) => {
           const numPrice = parseInt(p.price.replace(/[^\d]/g, ""), 10) || 499;
           const numCredits = parseInt(p.credits.replace(/[^\d]/g, ""), 10) || 600;
+          const isSelected = selectedPlan && p.name.toLowerCase() === selectedPlan.toLowerCase();
+          const isHighlighted = isSelected || p.featured;
           return (
             <article
               key={p.name}
-              className={`surface-panel p-6 ${p.featured ? "border-primary/60 shadow-[var(--shadow-glow)]" : ""}`}
+              className={`surface-panel p-6 ${isHighlighted ? "border-primary/60 shadow-[var(--shadow-glow)] ring-1 ring-primary/40" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">{p.name}</h3>
-                {p.featured && <Badge>Popular</Badge>}
+                {isSelected ? (
+                  <Badge className="bg-primary text-primary-foreground">Selected</Badge>
+                ) : p.featured ? (
+                  <Badge>Popular</Badge>
+                ) : null}
               </div>
               <p className="mt-4 font-display text-3xl font-bold">
                 {p.price}

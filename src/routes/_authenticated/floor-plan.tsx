@@ -65,6 +65,7 @@ import {
   useCreateProject,
 } from "@/hooks/use-projects";
 import type { PlanRoom } from "@/lib/archigen.functions";
+import { QK } from "@/lib/query-keys";
 
 const MATERIAL_PALETTES = [
   {
@@ -585,10 +586,10 @@ function FloorPlanPage() {
           setPlanName(formatHousePlanTitle(plotWidth, plotDepth, newTotalArea, bhk));
           setRender3DResult(null);
           setMobileTab("canvas");
-          queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
-          queryClient.invalidateQueries({ queryKey: ["projects"] });
-          queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-          queryClient.invalidateQueries({ queryKey: ["all-generations"] });
+          queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
+          queryClient.invalidateQueries({ queryKey: QK.projects() });
+          queryClient.invalidateQueries({ queryKey: QK.projectGenerations() });
+          queryClient.invalidateQueries({ queryKey: QK.allGenerations() });
           toast.success("Floor plan automatically generated as per instructions!", {
             description: `Generated ${bhk} BHK layout for ${plotStr} plot with ${newTotalArea} sq ft built-up area · saved to project.`,
           });

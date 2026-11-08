@@ -6,7 +6,7 @@ function getBaseUrl() {
 }
 
 export const IMAGE_MODEL = process.env["AI_IMAGE_MODEL"] || "imagen-3.0-generate-002";
-export const TEXT_MODEL = process.env["AI_TEXT_MODEL"] || "gemini-flash-latest";
+export const TEXT_MODEL = process.env["AI_TEXT_MODEL"] || "gemini-3.5-flash";
 
 function getApiKey(): string | null {
   return (
@@ -584,34 +584,14 @@ export async function enhancePrompt(brief: string, tool: string): Promise<string
 
   // 1. Try Gemini API if key is available
   if (geminiKey) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${geminiKey}`;
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: PROMPT_ENHANCER_SYSTEM }] },
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: `Tool: ${tool}. Brief: ${brief}` }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.8,
-          },
-        }),
-      });
-
-      if (res.ok) {
-        const json = (await res.json()) as GeminiContentResponse;
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text && !text.includes("assistant co-pilot") && text.length > 20) {
-          return text;
-        }
-      }
-    } catch (err) {
-      console.warn("[ArchiGen AI] Gemini prompt enhancer failed:", err);
+    const text = await callGeminiGenerateContent(
+      geminiKey,
+      PROMPT_ENHANCER_SYSTEM,
+      [{ role: "user", parts: [{ text: `Tool: ${tool}. Brief: ${brief}` }] }],
+      { temperature: 0.7, timeoutMs: 15000 },
+    );
+    if (text && !text.includes("assistant co-pilot") && text.length > 20) {
+      return text;
     }
   }
 
@@ -958,6 +938,185 @@ function generateSmartFloorPlanJSON(userContent: string): string {
   return JSON.stringify({ rooms });
 }
 
+/**
+ * Resilient multi-model Gemini generateContent caller with turn sanitization, timeout, and temperature tuning.
+ */
+async function callGeminiGenerateContent(
+  apiKey: string,
+  systemInstructionText: string | undefined,
+  rawContents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>,
+  options?: { json?: boolean; temperature?: number; candidateModels?: string[]; timeoutMs?: number },
+): Promise<string | null> {
+  const timeoutMs = options?.timeoutMs ?? 15000;
+  const preferredModel = options?.candidateModels?.[0] || TEXT_MODEL;
+  const modelsToTry = Array.from(
+    new Set([
+      preferredModel,
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+      "gemini-flash-lite-latest",
+      "gemini-3.1-flash-lite",
+    ]),
+  );
+
+  // 1. Sanitize conversation turns for Gemini v1beta:
+  // Must start with user, and adjacent turns with the same role should be coalesced
+  const sanitized: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+  for (const turn of rawContents) {
+    if (!turn.parts || turn.parts.length === 0 || !turn.parts[0]?.text?.trim()) continue;
+    if (sanitized.length === 0 && turn.role !== "user") {
+      // Skip leading model message
+      continue;
+    }
+    const last = sanitized[sanitized.length - 1];
+    if (last && last.role === turn.role) {
+      last.parts[0]!.text += `\n\n${turn.parts[0]!.text}`;
+    } else {
+      sanitized.push({
+        role: turn.role,
+        parts: [{ text: turn.parts[0]!.text }],
+      });
+    }
+  }
+
+  if (sanitized.length === 0) {
+    sanitized.push({ role: "user", parts: [{ text: "Hello" }] });
+  }
+
+  for (const model of modelsToTry) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(systemInstructionText
+            ? { systemInstruction: { parts: [{ text: systemInstructionText }] } }
+            : {}),
+          contents: sanitized,
+          generationConfig: {
+            responseMimeType: options?.json ? "application/json" : "text/plain",
+            temperature: options?.temperature ?? (options?.json ? 0.2 : 0.3),
+            maxOutputTokens: 2500,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (res.ok) {
+        const json = (await res.json()) as GeminiContentResponse;
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text && text.trim().length > 0) {
+          return text.trim();
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(
+          `[ArchiGen AI] Gemini API model ${model} returned ${res.status}: ${errText.slice(0, 150)}`,
+        );
+      }
+    } catch (err) {
+      console.warn(`[ArchiGen AI] Gemini API model ${model} failed:`, err);
+    }
+  }
+
+  return null;
+}
+
+/** Rich, domain-specific fallback for assistant queries when external APIs are unreachable */
+function generateArchitecturalAssistantFallback(userQuery: string): string {
+  const query = userQuery.toLowerCase();
+
+  // 1. Plot layout question (e.g. 30x40, 30x50, 40x60, 20x30)
+  const plotMatch = userQuery.match(/(\d+)\s*[xX*×]\s*(\d+)/);
+  if (plotMatch && plotMatch[1] && plotMatch[2]) {
+    const w = parseInt(plotMatch[1], 10);
+    const d = parseInt(plotMatch[2], 10);
+    const totalArea = w * d;
+    const isNorth = /north/i.test(query);
+    const isEast = /east/i.test(query);
+    const facing = isNorth ? "North" : isEast ? "East" : "Standard";
+
+    return `### **Architectural Layout Plan (${w}' × ${d}' | ${totalArea} sq ft - ${facing} Facing)**
+
+**1. Setbacks & Built-Up Footprint:**
+- **Front Setback:** 5'0" (driveway & entrance porch).
+- **Rear Setback:** 3'0" (utility & cross-ventilation corridor).
+- **Side Setbacks:** 2'6" to 3'0" light offsets.
+- **Estimated Ground Built-up Footprint:** ~${Math.round(totalArea * 0.76)} sq ft.
+
+**2. Spatial Allocation & Vastu Zoning:**
+- **Living & Foyer:** ${Math.round(w * 0.5)}'0" × 16'0" (North / North-East) — bright welcoming lounge.
+- **Master Bedroom Suite:** 12'0" × 14'0" (South-West / Nairutya) with 5'0" × 7'6" attached bath.
+- **Secondary Bedroom:** 11'0" × 12'0" (North-West / Vayavya) with direct natural window light.
+- **Modular Kitchen & Dining:** 10'0" × 12'0" (South-East / Agneya) with cooking platform facing East.
+- **Pooja Mandir:** 4'0" × 5'0" (North-East / Ishanya).
+- **Car Portico:** 10'0" × 15'0" covered parking bay.
+
+**3. Material & Interior Finishes:**
+- **Flooring:** 800×1600mm honed ivory vitrified tiles in public areas; matte wood-grain planks in bedrooms.
+- **Kitchen Counter:** 20mm jet black granite or Calacatta quartz with marine-grade acrylic cabinetry.
+
+**ArchiGen Generator Prompt:**
+\`Photorealistic modern ${facing}-facing residential layout, ${w}x${d} plot, open-concept living and dining, Vastu-compliant kitchen in South-East, master suite in South-West, covered car parking, warm 3000K cove lighting.\`
+
+*Conceptual design recommendation — verify on-site with a licensed structural engineer and municipal building bye-laws before construction.*`;
+  }
+
+  // 2. Palette and budget queries
+  if (/palette|material|budget|lakh|cost|minimal|japandi/i.test(query)) {
+    return `### **Material & Budget Specification Guide**
+
+**1. Curated Material Palette:**
+- **Flooring:** Light beige glazed vitrified tiles (600×1200mm) — ₹85–₹110/sq ft.
+- **Walls & Ceilings:** Low-VOC matte warm white with fluted natural light oak wood veneer panels.
+- **Joinery & Millwork:** High-density moisture-resistant (HDMR) board with anti-fingerprint acrylic or matte laminate.
+- **Architectural Lighting:** Layered 3000K warm cove lights with CRI > 90 and trimless anti-glare ceiling downlights.
+
+**2. Budget Allocation Guide (under ₹4–5 Lakh for 2BHK Interior Core):**
+- **Modular Kitchen (BWP Marine Ply + Acrylic):** ₹1,60,000 – ₹1,90,000.
+- **Master Bedroom Wardrobe (8' × 7' Sliding HDMR):** ₹90,000 – ₹1,10,000.
+- **Living Room TV Console & Feature Wall:** ₹45,000 – ₹60,000.
+- **False Ceiling & Cove Lighting (Hall & Dining):** ₹40,000 – ₹55,000.
+- **Hardware & Soft Closures (Hettich/Hafele):** Included in joinery provisions.
+
+**ArchiGen Generator Prompt:**
+\`Japandi warm minimalist residential interior, natural light oak millwork, microcement walls, honed travertine coffee table, 3000K warm architectural cove lighting, serene ambiance.\`
+
+*Conceptual design recommendation — verify actual vendor quotations and structural finishes locally.*`;
+  }
+
+  // 3. Dimensional clearances & corridors
+  if (/corridor|hallway|passage|stair|clearance|width|height|dimension/i.test(query)) {
+    return `### **Standard Architectural Dimensional Clearances**
+
+- **Main Residential Corridors:** Minimum **3'6" (1050 mm)**; recommended **4'0" (1200 mm)** for two persons passing comfortably and furniture transit.
+- **Internal Service Passages:** Minimum **3'0" (900 mm)**.
+- **Internal Staircases:** Minimum flight width **3'3" (1000 mm)**; Riser height **6" (150 mm)**; Tread depth **10" to 11" (250–280 mm)**; Headroom clearance min **7'0" (2100 mm)**.
+- **Clear Ceiling Height:** Minimum **9'6" (2900 mm)**; Standard residential **10'0" (3050 mm)**; High-ceiling luxury **11'0" to 12'0"**.
+- **Door Openings:** Main entrance min **3'6" × 7'0"**; Bedrooms **3'0" × 7'0"**; Bathrooms / Balconies **2'6" × 7'0"**.
+
+*Conceptual architectural standards — adhere strictly to National Building Code (NBC) and local municipal development control regulations.*`;
+  }
+
+  // 4. General architectural fallback
+  return `### **ArchiGen Architectural Consultation**
+
+As your Senior Architectural Co-Pilot, I can provide precision calculations and layouts for:
+
+1. **Plot Space Planning & Floor Plans:** Setbacks, coverage, circulation, room sizing, and Vastu zoning for any plot dimensions (e.g. 20×30, 30×40, 30×50, 40×60).
+2. **Vastu Shastra Principles:** Detailed cardinal orientation for master suites (SW), kitchens (SE), pooja rooms (NE), and entrances.
+3. **Construction & Interior Costing:** Realistic civil (₹1,800–₹2,600/sq ft) and interior fit-out budgets in INR.
+4. **Material Specifications:** Stone, tiles, timber, glass, fenestration, and thermal/acoustic considerations.
+
+*Share your specific plot dimensions, budget range, or design requirements to receive a customized room-by-room architectural brief.*`;
+}
+
 /** Plain chat completion returning text via Gemini API, OpenRouter, or Pollinations. */
 export async function chatCompletion(
   messages: { role: "system" | "user" | "assistant"; content: string }[],
@@ -966,48 +1125,31 @@ export async function chatCompletion(
   const geminiKey = getGeminiKey();
   const lastUserMessage = messages.filter((m) => m.role === "user").pop()?.content || "";
 
-  // 1. If Gemini key is available, use Google Gemini REST API
+  // 1. If Gemini key is available, use Google Gemini REST API with resilient fallback
   if (geminiKey) {
-    try {
-      const systemInstruction = messages.find((m) => m.role === "system")?.content;
-      const conversation = messages
-        .filter((m) => m.role !== "system")
-        .map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }));
+    const systemInstruction = messages.find((m) => m.role === "system")?.content;
+    const conversation = messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
+        parts: [{ text: m.content }],
+      }));
 
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${geminiKey}`;
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(systemInstruction
-            ? { systemInstruction: { parts: [{ text: systemInstruction }] } }
-            : {}),
-          contents:
-            conversation.length > 0
-              ? conversation
-              : [{ role: "user", parts: [{ text: lastUserMessage }] }],
-          generationConfig: {
-            responseMimeType: options?.json ? "application/json" : "text/plain",
-            temperature: 0.7,
-          },
-        }),
-      });
+    const geminiText = await callGeminiGenerateContent(
+      geminiKey,
+      systemInstruction,
+      conversation.length > 0
+        ? conversation
+        : [{ role: "user", parts: [{ text: lastUserMessage || "Hello" }] }],
+      {
+        json: options?.json,
+        temperature: options?.json ? 0.2 : 0.3,
+        timeoutMs: 18000,
+      },
+    );
 
-      if (res.ok) {
-        const json = (await res.json()) as GeminiContentResponse;
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text as string;
-      } else {
-        const errText = await res.text();
-        console.warn(
-          `[ArchiGen AI] Gemini Chat API returned ${res.status}: ${errText.slice(0, 200)}`,
-        );
-      }
-    } catch (err) {
-      console.warn("[ArchiGen AI] Gemini chat API call failed:", err);
+    if (geminiText) {
+      return geminiText;
     }
   }
 
@@ -1015,6 +1157,8 @@ export async function chatCompletion(
   const standardKey = getApiKey();
   if (standardKey) {
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18000);
       const res = await fetch(`${getBaseUrl()}/chat/completions`, {
         method: "POST",
         headers: {
@@ -1024,9 +1168,12 @@ export async function chatCompletion(
         body: JSON.stringify({
           model: TEXT_MODEL,
           messages,
+          temperature: options?.json ? 0.2 : 0.3,
           ...(options?.json ? { response_format: { type: "json_object" } } : {}),
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       if (res.ok) {
         const json = (await res.json()) as OpenRouterChatResponse;
@@ -1044,8 +1191,10 @@ export async function chatCompletion(
     return polliText;
   }
 
+  // 4. Guaranteed domain-expert fallback
   if (options?.json) {
     return generateSmartFloorPlanJSON(lastUserMessage);
   }
-  return "I am ArchiGen AI assistant co-pilot. I can help with room dimensions, vastu orientation, material estimation, and floor plan space planning.";
+  return generateArchitecturalAssistantFallback(lastUserMessage);
 }
+

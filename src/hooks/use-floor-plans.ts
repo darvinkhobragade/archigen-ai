@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { PlanRoom } from "@/lib/archigen.functions";
+import { QK } from "@/lib/query-keys";
 
 export type SavedPlan = {
   id: string;
@@ -22,7 +23,7 @@ export type SavedPlan = {
 
 export function useFloorPlans() {
   return useQuery({
-    queryKey: ["floor-plans"],
+    queryKey: QK.floorPlans(),
     queryFn: async (): Promise<SavedPlan[]> => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return [];
@@ -159,11 +160,11 @@ export function useSaveFloorPlan() {
       return data.id;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-      queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
+      queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
+      queryClient.invalidateQueries({ queryKey: QK.projects() });
+      queryClient.invalidateQueries({ queryKey: QK.projectGenerations() });
+      queryClient.invalidateQueries({ queryKey: QK.allGenerations() });
+      queryClient.invalidateQueries({ queryKey: QK.totalGenerationsCount() });
       toast.success("Floor plan saved to project");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -178,7 +179,7 @@ export function useDeleteFloorPlan() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+      queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
       toast.success("Plan deleted");
     },
     onError: (e: Error) => toast.error(e.message),

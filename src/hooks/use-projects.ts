@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { images } from "@/lib/archigen-data";
+import { QK } from "@/lib/query-keys";
 
 export type ProjectType = "Architecture" | "Interior" | "Redesign" | "Floor Plan";
 
@@ -78,15 +80,13 @@ export function coverFor(project: Pick<ProjectRow, "type" | "cover_url" | "lates
 }
 
 export function relativeTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  try {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return "recently";
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return "recently";
+  }
 }
 
 /** Active Project state management with localStorage sync */
@@ -152,7 +152,7 @@ async function signPaths(paths: string[]): Promise<Map<string, string>> {
 
 export function useProjects() {
   return useQuery({
-    queryKey: ["projects"],
+    queryKey: QK.projects(),
     queryFn: async (): Promise<ProjectRow[]> => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return [];
@@ -213,7 +213,7 @@ export function useProjects() {
 
 export function useProjectGenerations(projectId: string | null | undefined) {
   return useQuery({
-    queryKey: ["project-generations", projectId],
+    queryKey: QK.projectGenerations(projectId),
     enabled: Boolean(projectId),
     queryFn: async (): Promise<GenerationRow[]> => {
       if (!projectId) return [];
@@ -240,7 +240,7 @@ export function useProjectGenerations(projectId: string | null | undefined) {
 
 export function useAllGenerations() {
   return useQuery({
-    queryKey: ["all-generations"],
+    queryKey: QK.allGenerations(),
     queryFn: async (): Promise<GenerationRow[]> => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return [];
@@ -275,7 +275,7 @@ export function useAllGenerations() {
 
 export function useTotalGenerationsCount() {
   return useQuery({
-    queryKey: ["total-generations-count"],
+    queryKey: QK.totalGenerationsCount(),
     queryFn: async (): Promise<number> => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return 0;
@@ -293,11 +293,11 @@ export function useTotalGenerationsCount() {
 function useInvalidateProjects() {
   const queryClient = useQueryClient();
   return () => {
-    queryClient.invalidateQueries({ queryKey: ["projects"] });
-    queryClient.invalidateQueries({ queryKey: ["project-generations"] });
-    queryClient.invalidateQueries({ queryKey: ["all-generations"] });
-    queryClient.invalidateQueries({ queryKey: ["total-generations-count"] });
-    queryClient.invalidateQueries({ queryKey: ["floor-plans"] });
+    queryClient.invalidateQueries({ queryKey: QK.projects() });
+    queryClient.invalidateQueries({ queryKey: QK.projectGenerations() });
+    queryClient.invalidateQueries({ queryKey: QK.allGenerations() });
+    queryClient.invalidateQueries({ queryKey: QK.totalGenerationsCount() });
+    queryClient.invalidateQueries({ queryKey: QK.floorPlans() });
   };
 }
 

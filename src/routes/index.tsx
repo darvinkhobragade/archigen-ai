@@ -1,25 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Building2, Ruler, Sofa, Wand2, Sparkles, ShieldCheck } from "lucide-react";
-
-import { useEffect, useState } from "react";
+import { ArrowRight, Building2, Ruler, Sofa, Wand2, Sparkles, ShieldCheck, Menu } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { images, plans, CONCEPTUAL_NOTE } from "@/lib/archigen-data";
-import { supabase } from "@/integrations/supabase/client";
 import { ThemeToggle } from "@/components/archigen/theme-toggle";
-
-function useSignedIn() {
-  const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
-    const { data } = supabase.auth.onAuthStateChange((_e, session) =>
-      setSignedIn(Boolean(session)),
-    );
-    return () => data.subscription.unsubscribe();
-  }, []);
-  return signedIn;
-}
+import { useSignedIn } from "@/hooks/use-signed-in";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -64,8 +52,11 @@ const features = [
   },
 ];
 
+const PLACEHOLDER_SRC = "/favicon.svg";
+
 function Landing() {
   const signedIn = useSignedIn();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,6 +91,60 @@ function Landing() {
                 {signedIn ? "Open studio" : "Get started"} <ArrowRight className="size-4" />
               </Link>
             </Button>
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+                  <Menu className="size-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-64 bg-background p-6">
+                <SheetTitle className="flex items-center gap-2 font-display text-base font-semibold">
+                  <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
+                    <Ruler className="size-3.5" />
+                  </span>
+                  ArchiGen AI
+                </SheetTitle>
+                <nav className="mt-8 flex flex-col gap-4 text-base">
+                  <a
+                    href="#features"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Features
+                  </a>
+                  <a
+                    href="#showcase"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Showcase
+                  </a>
+                  <a
+                    href="#pricing"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Pricing
+                  </a>
+                  <hr className="my-2 border-border" />
+                  {!signedIn ? (
+                    <Button asChild variant="outline" className="w-full justify-start">
+                      <Link to="/auth" onClick={() => setMobileNavOpen(false)}>
+                        Sign in
+                      </Link>
+                    </Button>
+                  ) : null}
+                  <Button asChild className="w-full justify-start">
+                    <Link
+                      to={signedIn ? "/dashboard" : "/auth"}
+                      onClick={() => setMobileNavOpen(false)}
+                    >
+                      {signedIn ? "Open studio" : "Get started"}
+                    </Link>
+                  </Button>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
@@ -112,6 +157,9 @@ function Landing() {
             width={1600}
             height={1008}
             className="absolute inset-0 size-full object-cover opacity-70"
+            onError={(e) => {
+              e.currentTarget.src = PLACEHOLDER_SRC;
+            }}
           />
           <div
             className="absolute inset-0"
@@ -200,6 +248,9 @@ function Landing() {
                     width={900}
                     height={700}
                     className="h-60 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.src = PLACEHOLDER_SRC;
+                    }}
                   />
                   <figcaption className="label-caps border-t border-border bg-card px-4 py-3">
                     {s.label}
@@ -245,7 +296,10 @@ function Landing() {
                   className="mt-6 w-full"
                   variant={p.featured ? "default" : "outline"}
                 >
-                  <Link to="/pricing">{p.cta}</Link>
+                  {/* Pass plan name as search param so pricing page can scroll/highlight it */}
+                  <Link to="/pricing" search={{ plan: p.name.toLowerCase() }}>
+                    {p.cta}
+                  </Link>
                 </Button>
               </article>
             ))}

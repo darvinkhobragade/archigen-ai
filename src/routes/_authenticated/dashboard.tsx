@@ -3,6 +3,7 @@ import { ArrowUpRight, Building2, Ruler, Sofa, Wand2, Coins, Sparkles, FolderOpe
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/archigen/generator";
 import { tools, creditCosts } from "@/lib/archigen-data";
 import { coverFor, relativeTime, useProjects, useTotalGenerationsCount } from "@/hooks/use-projects";
@@ -29,10 +30,21 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const icons = { Building2, Sofa, Wand2, Ruler } as const;
 
 function Dashboard() {
-  const { data: profile } = useProfile();
-  const { data: projects = [] } = useProjects();
-  const { data: totalGenerations = 0 } = useTotalGenerationsCount();
+  const { data: profile, isLoading: profileLoading } = useProfile();
+  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: totalGenerations = 0, isLoading: countLoading } = useTotalGenerationsCount();
   const firstName = (profile?.full_name || profile?.email || "designer").split(/[\s@]/)[0];
+
+  const stats = [
+    { label: "Credits left", value: String(profile?.credits ?? 0), loading: profileLoading },
+    { label: "Projects", value: String(projects.length), loading: projectsLoading },
+    { label: "Generations", value: String(totalGenerations), loading: countLoading },
+    {
+      label: "Favorites",
+      value: String(projects.filter((p) => p.is_favorite).length),
+      loading: projectsLoading,
+    },
+  ];
 
   return (
     <>
@@ -50,15 +62,14 @@ function Dashboard() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Credits left", value: String(profile?.credits ?? 0) },
-          { label: "Projects", value: String(projects.length) },
-          { label: "Generations", value: String(totalGenerations) },
-          { label: "Favorites", value: String(projects.filter((p) => p.is_favorite).length) },
-        ].map((s) => (
+        {stats.map((s) => (
           <div key={s.label} className="surface-panel p-5">
             <p className="label-caps">{s.label}</p>
-            <p className="mt-2 font-display text-3xl font-bold">{s.value}</p>
+            {s.loading ? (
+              <Skeleton className="mt-2 h-9 w-20 rounded-md" />
+            ) : (
+              <p className="mt-2 font-display text-3xl font-bold">{s.value}</p>
+            )}
           </div>
         ))}
       </div>
@@ -100,7 +111,17 @@ function Dashboard() {
             </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {projects.length === 0 && (
+            {projectsLoading ? (
+              Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="surface-panel overflow-hidden">
+                  <Skeleton className="h-36 w-full" />
+                  <div className="p-4 space-y-2">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-3/4" />
+                  </div>
+                </div>
+              ))
+            ) : projects.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No projects yet —{" "}
                 <Link to="/projects" search={{ tab: "projects" }} className="text-primary underline">
@@ -108,8 +129,8 @@ function Dashboard() {
                 </Link>
                 .
               </p>
-            )}
-            {projects.slice(0, 4).map((p) => {
+            ) : null}
+            {!projectsLoading && projects.slice(0, 4).map((p) => {
               const count = p.generations_count ?? 0;
               return (
                 <Link

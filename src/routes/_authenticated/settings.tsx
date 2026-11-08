@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-profile";
 import { useAppSettings } from "@/hooks/use-app-settings";
+import { QK } from "@/lib/query-keys";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,7 +83,7 @@ function SettingsPage() {
       toast.error(error.message);
       return;
     }
-    queryClient.invalidateQueries({ queryKey: ["profile"] });
+    queryClient.invalidateQueries({ queryKey: QK.profile() });
     toast.success("Profile saved");
   }
 
