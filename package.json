@@ -1,9 +1,6 @@
 {
-  "name": "archigen-ai",
-  "description": "AI architecture & interior design studio powered by React 19, TanStack Start, Supabase, and Google Gemini",
-  "version": "1.0.0",
+  "name": "tanstack_start_ts",
   "private": true,
-  "license": "UNLICENSED",
   "sideEffects": false,
   "type": "module",
   "scripts": {
