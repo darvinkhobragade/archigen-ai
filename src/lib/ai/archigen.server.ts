@@ -220,18 +220,29 @@ async function fetchPhotorealisticFluxImage(
     `[ArchiGen AI] Calling Flux rendering engine (${width}x${height}, hires: ${isHires}, seed ${chosenSeed}): ${imageUrl}`,
   );
 
-  const res = await fetch(imageUrl, {
+  let res = await fetch(imageUrl, {
     headers: {
       "User-Agent": "ArchiGen-Studio/2.0",
     },
   });
+
+  // If Flux is rate-limited (402/429) or fails, fallback to Pollinations turbo engine with exact dimensions
+  if (!res.ok) {
+    console.warn(`[ArchiGen AI] Flux returned status ${res.status}. Falling back to standard engine...`);
+    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true&seed=${chosenSeed}&enhance=true`;
+    res = await fetch(fallbackUrl, {
+      headers: {
+        "User-Agent": "ArchiGen-Studio/2.0",
+      },
+    });
+  }
 
   if (res.ok) {
     const buffer = await res.arrayBuffer();
     return { bytes: new Uint8Array(buffer), contentType: "image/jpeg", seed: chosenSeed };
   }
 
-  throw new Error(`Flux generator responded with status ${res.status}`);
+  throw new Error(`Generator responded with status ${res.status}`);
 }
 
 /** Native Google Gemini Image & Imagen 3 API integration */

@@ -129,6 +129,7 @@ export function GeneratorCanvas({
     prompt?: string;
     seed?: number;
     projectId?: string | null;
+    aspectRatio?: string;
   } | null>(null);
   const [favorite, setFavorite] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<string>("1:1");
@@ -202,12 +203,15 @@ export function GeneratorCanvas({
       sourceImage: request.sourceImage ?? sourceImage ?? null,
     });
 
+    const activeRatio = request.aspectRatio || aspectRatio;
+
     setResult({
       id: data.id,
       url: data.url,
       prompt: request.prompt,
       seed: data.seed,
       projectId: data.projectId ?? (appSettings.autosave ? selectedProjectId : null),
+      aspectRatio: activeRatio,
     });
 
     if (appSettings.autosave && data.projectId && !selectedProjectId) {
@@ -260,16 +264,18 @@ export function GeneratorCanvas({
 
   const isBusy = generation.isPending;
 
-  const aspectClass =
-    aspectRatio === "16:9"
-      ? "aspect-[16/9]"
-      : aspectRatio === "4:3"
-        ? "aspect-[4/3]"
-        : aspectRatio === "9:16"
-          ? "aspect-[9/16]"
-          : aspectRatio === "3:2"
-            ? "aspect-[3/2]"
-            : "aspect-square";
+  const currentFramingRatio = aspectRatio;
+
+  const aspectConfig =
+    currentFramingRatio === "16:9"
+      ? { ratioCss: "16 / 9", widthStyle: "min(680px, 100%)", maxHeightStyle: "520px" }
+      : currentFramingRatio === "4:3"
+        ? { ratioCss: "4 / 3", widthStyle: "min(640px, 100%)", maxHeightStyle: "520px" }
+        : currentFramingRatio === "9:16"
+          ? { ratioCss: "9 / 16", widthStyle: "min(300px, 100%)", maxHeightStyle: "534px" }
+          : currentFramingRatio === "3:2"
+            ? { ratioCss: "3 / 2", widthStyle: "min(660px, 100%)", maxHeightStyle: "520px" }
+            : { ratioCss: "1 / 1", widthStyle: "min(480px, 100%)", maxHeightStyle: "480px" };
 
   const currentProject = projects.find(
     (p) => p.id === (result?.projectId || selectedProjectId),
@@ -483,8 +489,13 @@ export function GeneratorCanvas({
                   type="button"
                   variant={aspectRatio === ratio ? "default" : "outline"}
                   size="sm"
-                  className="h-8 px-1 text-[11px] font-mono"
-                  onClick={() => setAspectRatio(ratio)}
+                  className="h-8 px-1 text-[11px] font-mono cursor-pointer transition-all"
+                  onClick={() => {
+                    setAspectRatio(ratio);
+                    if (result) {
+                      setResult((prev) => (prev ? { ...prev, aspectRatio: ratio } : null));
+                    }
+                  }}
                 >
                   {ratio}
                 </Button>
@@ -563,9 +574,14 @@ export function GeneratorCanvas({
           </div>
         )}
 
-        <div className="flex-1 min-h-[380px] grid place-items-center p-4 bg-secondary/20 blueprint-grid">
+        <div className="flex-1 min-h-[440px] grid place-items-center p-4 bg-secondary/20 blueprint-grid overflow-hidden">
           <div
-            className={`relative w-full max-w-2xl max-h-[560px] overflow-hidden rounded-lg border border-border shadow-sm bg-background ${aspectClass}`}
+            className="relative overflow-hidden rounded-lg border border-border shadow-md bg-background transition-all duration-300 mx-auto flex items-center justify-center"
+            style={{
+              aspectRatio: aspectConfig.ratioCss,
+              width: aspectConfig.widthStyle,
+              maxHeight: aspectConfig.maxHeightStyle,
+            }}
           >
             {result && !isBusy ? (
               sourceImage ? (
@@ -588,7 +604,7 @@ export function GeneratorCanvas({
                   <img
                     src={result.url}
                     alt={previewAlt}
-                    className="absolute inset-0 size-full object-cover contrast-[1.03] saturate-[1.02]"
+                    className="absolute inset-0 size-full object-contain contrast-[1.03] saturate-[1.02]"
                   />
                   <div
                     className="absolute inset-0 overflow-hidden"
@@ -599,7 +615,7 @@ export function GeneratorCanvas({
                     <img
                       src={sourceImage}
                       alt="Original Photo"
-                      className="absolute inset-0 size-full object-cover contrast-[1.03] saturate-[1.02]"
+                      className="absolute inset-0 size-full object-contain contrast-[1.03] saturate-[1.02]"
                     />
                   </div>
                   <div
@@ -618,23 +634,29 @@ export function GeneratorCanvas({
                   </Badge>
                 </div>
               ) : (
-                <div className="relative size-full group">
+                <div className="relative size-full group flex items-center justify-center">
                   <img
                     src={result.url}
                     alt={previewAlt}
                     loading="lazy"
-                    className="size-full object-cover contrast-[1.03] saturate-[1.02]"
+                    className="size-full object-contain contrast-[1.03] saturate-[1.02]"
                   />
+                  <Badge
+                    variant="secondary"
+                    className="absolute top-3 left-3 z-10 bg-background/85 backdrop-blur text-[10px] font-mono border border-border/60 shadow-xs"
+                  >
+                    {currentFramingRatio}
+                  </Badge>
                   <Button
                     variant="secondary"
                     size="icon"
-                    className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur"
+                    className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur z-10"
                     onClick={() => setZoomOpen(true)}
                   >
                     <Maximize2 className="size-4" />
                   </Button>
                   {result.seed && (
-                    <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <Badge
                         variant="secondary"
                         className="bg-background/80 backdrop-blur text-[10px] font-mono"
@@ -665,6 +687,11 @@ export function GeneratorCanvas({
                       <span className="font-semibold text-foreground">Generate AI Render</span> to
                       synthesize high-resolution concepts.
                     </p>
+                    <div className="pt-1">
+                      <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+                        Framing: {aspectRatio}
+                      </Badge>
+                    </div>
                   </div>
                 )}
               </div>
