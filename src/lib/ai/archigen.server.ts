@@ -193,38 +193,6 @@ function createFallbackSvgBytes(
   };
 }
 
-/**
- * Cleanly strips any third-party engine watermarks (e.g. Pollinations branding)
- * by extracting the image above the bottom margin and returning exact target dimensions.
- */
-async function stripThirdPartyWatermark(
-  imageBytes: Uint8Array,
-  targetWidth: number,
-  targetHeight: number,
-  extraHeight: number,
-): Promise<Uint8Array> {
-  try {
-    const sharpModule = await import("sharp");
-    const sharp = sharpModule.default || sharpModule;
-    const meta = await sharp(imageBytes).metadata();
-    if (!meta.width || !meta.height) return imageBytes;
-
-    const cropPx = Math.round(extraHeight * (meta.height / (targetHeight + extraHeight)));
-    const cleanHeight = Math.max(10, meta.height - cropPx);
-
-    const cleaned = await sharp(imageBytes)
-      .extract({ left: 0, top: 0, width: meta.width, height: cleanHeight })
-      .resize(targetWidth, targetHeight)
-      .jpeg({ quality: 95 })
-      .toBuffer();
-
-    return new Uint8Array(cleaned);
-  } catch (err) {
-    console.warn("[ArchiGen AI] Watermark clean fallback:", err);
-    return imageBytes;
-  }
-}
-
 /** Generates photorealistic architectural render using Pollinations Flux engine with precision dimensions and seed */
 async function fetchPhotorealisticFluxImage(
   prompt: string,
@@ -241,19 +209,15 @@ async function fetchPhotorealisticFluxImage(
   const width = isHires ? Math.min(2048, Math.round(ratioConfig.width * 1.35)) : ratioConfig.width;
   const height = isHires ? Math.min(2048, Math.round(ratioConfig.height * 1.35)) : ratioConfig.height;
 
-  // Request extra vertical space at bottom to push any third-party logo into the crop strip
-  const extraHeight = Math.max(54, Math.round(height * 0.065));
-  const requestedHeight = height + extraHeight;
-
   const finalPrompt = isHires
     ? `${prompt}, ultra-high resolution masterwork, 8k uhd photorealism, authentic material textures, raw uncompressed render`
     : prompt;
 
   const encodedPrompt = encodeURIComponent(finalPrompt);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${requestedHeight}&nologo=true&seed=${chosenSeed}&model=flux&enhance=true`;
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true&seed=${chosenSeed}&model=flux&enhance=true`;
 
   console.info(
-    `[ArchiGen AI] Calling Flux rendering engine (${width}x${requestedHeight}, hires: ${isHires}, seed ${chosenSeed}): ${imageUrl}`,
+    `[ArchiGen AI] Calling Flux rendering engine (${width}x${height}, hires: ${isHires}, seed ${chosenSeed}): ${imageUrl}`,
   );
 
   const res = await fetch(imageUrl, {
@@ -264,13 +228,7 @@ async function fetchPhotorealisticFluxImage(
 
   if (res.ok) {
     const buffer = await res.arrayBuffer();
-    const cleanBytes = await stripThirdPartyWatermark(
-      new Uint8Array(buffer),
-      width,
-      height,
-      extraHeight,
-    );
-    return { bytes: cleanBytes, contentType: "image/jpeg", seed: chosenSeed };
+    return { bytes: new Uint8Array(buffer), contentType: "image/jpeg", seed: chosenSeed };
   }
 
   throw new Error(`Flux generator responded with status ${res.status}`);
