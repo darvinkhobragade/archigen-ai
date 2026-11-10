@@ -326,7 +326,6 @@ For in-depth setup steps and troubleshooting, see the [Production Deployment Gui
 This repository is authored and maintained by **[Darvin Khobragade](https://github.com/darvinkhobragade)**.
 
 - **Intellectual Property**: Proprietary architectural workflows, spatial algorithms, and UI designs are reserved by the author.
-- **Academic Context**: Capstone Project (Academic Session 2026–2027).
 
 ---
 
